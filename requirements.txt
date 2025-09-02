@@ -1,0 +1,13 @@
+streamlit
+pandas
+numpy
+matplotlib
+scikit-learn
+lightgbm
+xgboost
+catboost
+pymysql>=1.1.0
+sqlalchemy
+requests
+torch
+python-dotenv
