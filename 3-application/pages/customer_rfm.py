@@ -1,9 +1,11 @@
-# test_app2.py
 import os
 import numpy as np
 import pandas as pd
 import streamlit as st
 from sqlalchemy import create_engine, text
+from pages.app_bootstrap import hide_builtin_nav, render_sidebar # 필수 
+hide_builtin_nav()
+render_sidebar()
 
 # =========================
 # DB 연결 설정 (환경변수로 오버라이드 가능)
