@@ -1,0 +1,1 @@
+- Machine Learning model pkl,pth 남는 폴더입니다. 작업 후 pt model 찍히면 제거 요망.
