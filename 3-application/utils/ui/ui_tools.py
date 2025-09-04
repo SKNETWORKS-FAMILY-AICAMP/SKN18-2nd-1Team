@@ -41,3 +41,20 @@ def metric_with_tooltip(label: str, value: str, delta: Optional[str] = None, too
         """,
         unsafe_allow_html=True
     )
+    
+# 그룹별 지표 영역
+def render_segment_kpis(seg_df):
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric("고객 수", f"{len(seg_df):,}")
+    with c2:
+        st.metric(
+            "평균 R/F/M",
+            f"{seg_df['r_score'].mean():.1f} / {seg_df['f_score'].mean():.1f} / {seg_df['m_score'].mean():.1f}"
+        )
+    with c3:
+        st.metric("평균 Churn", f"{(seg_df['churn_probability'].astype(float)).mean():.3f}")
+    with c4:
+        risky_ratio = (seg_df["churn_probability"].astype(float).fillna(0) >= 0.6).mean() * 100
+        st.metric("고위험 비율(≥0.6)", f"{risky_ratio:.1f}%")
+
