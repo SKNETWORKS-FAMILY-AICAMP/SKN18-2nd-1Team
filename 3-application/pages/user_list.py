@@ -93,11 +93,10 @@ for c in ["CustomerId", "Age", "Gender", "Geography", "CreditScore", "NumOfProdu
 list_cols = base_cols + [proba_col]
 
 list_df = df[list_cols].copy()
-list_df["이탈율"] = list_df[proba_col].round(3)
-list_df.rename(columns={proba_col: "proba"}, inplace=True)
-list_df= list_df.drop(["proba"],axis=1)
-# list_df.columns = ["CustomerId", "나이", "성별", "지역", "신용점수", "가입상품","이탈율"]
-# list_df.rename(columns={pruuoba_col: "이탈율"}, inplace=True)
+# list_df["이탈율"] = list_df[proba_col].round()
+# list_df.rename(columns={proba_col: "proba"}, inplace=True)
+# list_df= list_df.drop(["proba"],axis=1)
+list_df.columns = ["CustomerId", "나이", "성별", "지역", "신용점수", "가입상품","이탈율"]
 
 # 필터 적용
 list_df = list_df[(list_df["이탈율"] >= min_p) & (list_df["이탈율"] <= max_p)]
@@ -128,6 +127,12 @@ if "_orig_idx" not in preview_df.columns:
 
 # ---- AgGrid 옵션 구성
 gob = GridOptionsBuilder.from_dataframe(preview_df)
+gob.configure_column(
+    "이탈율",
+    type=["numericColumn"],
+    # 화면에만 0~1 → 0~100 변환 + 소수 2자리 + %
+    valueFormatter="(value == null) ? '' : (value * 100).toFixed(2) + ' %'"
+)
 gob.configure_default_column(sortable=True, filter=True, resizable=True)
 gob.configure_selection(selection_mode="single", use_checkbox=False)
 gob.configure_pagination(paginationAutoPageSize=True)
@@ -135,11 +140,6 @@ gob.configure_pagination(paginationAutoPageSize=True)
 # score 포맷
 if "score" in preview_df.columns:
     gob.configure_column("score", type=["numericColumn"], valueFormatter="value.toFixed(3)")
-    gob.configure_grid_options(
-        suppressCellSelection=True,         # 셀만 하이라이트 안 됨
-        suppressRowClickSelection=False,    # 행 클릭으로 선택 가능
-        rowSelection="single"
-    )
 # (선택) 숨김 컬럼
 gob.configure_column("_orig_idx", hide=True)
 
@@ -155,6 +155,10 @@ grid_resp = AgGrid(
     allow_unsafe_jscode=True,
     enable_enterprise_modules=False,
     key="customers_grid",
+    custom_css={                                    # ✅ 셀 포커스 테두리 제거 + 선택행 하이라이트
+        ".ag-cell-focus": {"border": "none !important", "outline": "none !important"},
+        ".ag-row-selected": {"background-color": "rgba(255, 99, 132, 0.12) !important"},
+    },
 )
 
 # 선택된 행 받기
@@ -196,18 +200,24 @@ else:
     if detail_row is None or detail_row.empty:
         st.warning("선택한 고객의 상세정보를 찾을 수 없습니다.")
     else:
+        name = detail_row["Surname"]
         # score/label 컬럼명 자동 감지 함수 사용 가정(detect_score_cols)
         proba_col, label_col = detect_score_cols(df)
-        score_val = float(detail_row[proba_col].values[0])
+        score_val = float(detail_row[proba_col].values[0]*100)
         label_val = int(detail_row[label_col].values[0])
 
-        c1, c2, c3, c4 = st.columns(4)
+        
         def v(col, default="N/A"):
             return detail_row[col].values[0] if col in detail_row.columns else default
-        c1.metric("예측확률 (Churn)", f"{score_val:.3f}")
-        c2.metric("예측라벨", "이탈" if label_val == 1 else "유지")
-        c3.metric("CustomerId", str(v("CustomerId")))
-        c4.metric("Surname", str(v("Surname")))
+        st.subheader(f"👤 고객 : {v('Surname')} ({v('CustomerId')})")
+
+        c1, c2 = st.columns(2)
+        c1.metric("예측확률 (Churn)", f"{score_val:.2f}%")
+        c2.markdown("예측라벨")
+        color = "red" if label_val == 1 else "green"
+        label_txt = "이탈" if label_val == 1 else "유지"
+        c2.markdown(f"<span style='color:{color};margin-top:0.25rem;font-weight:700'>{label_txt}</span>", unsafe_allow_html=True)
+        
 
         left_box, right_box = st.columns(2)
         with left_box:
