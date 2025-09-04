@@ -1,0 +1,39 @@
+{
+  "mode": "holdout",
+  "timestamp": "20250904_140504",
+  "input_csv": "C:\\Users\\Playdata\\Desktop\\개별 프로젝트들\\dan2\\workspace\\SKN18-2nd-1Team\\3-application\\assets\\data\\Customer-Churn-Records.csv",
+  "features": {
+    "numeric": [
+      "CreditScore",
+      "Age",
+      "Tenure",
+      "Balance",
+      "NumOfProducts",
+      "Balance_per_Product"
+    ],
+    "binary": [
+      "IsActiveMember",
+      "Senior_Flag",
+      "Germany_Flag",
+      "Germany_HighBalance",
+      "LowActive_LowProduct"
+    ],
+    "onehot": [
+      "Geography",
+      "Age_Group",
+      "Satisfaction_Level"
+    ]
+  },
+  "metrics": {
+    "roc_auc": 0.8648223342255387,
+    "pr_auc": 0.6885537913954223,
+    "f1": 0.5907752698724239,
+    "precision": 0.7377450980392157,
+    "recall": 0.49263502454991814
+  },
+  "result_csv": "C:\\Users\\Playdata\\Desktop\\개별 프로젝트들\\dan2\\workspace\\SKN18-2nd-1Team\\3-application\\assets\\data\\result_holdout_20250904_140504.csv",
+  "model_path": "C:\\Users\\Playdata\\Desktop\\개별 프로젝트들\\dan2\\workspace\\SKN18-2nd-1Team\\3-application\\models\\model_holdout_20250904_140504.joblib",
+  "n_splits": null,
+  "test_size": 0.3,
+  "seed": 42
+}
