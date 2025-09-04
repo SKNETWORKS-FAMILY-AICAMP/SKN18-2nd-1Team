@@ -1,8 +1,21 @@
 # utils/process/utils.py
-import os
+import os, random
+import numpy as np
 import pandas as pd
 from sqlalchemy import create_engine
 
+
+# --- 추가: 재현성/컬럼검증 ---
+def set_seed(seed: int = 42):
+    random.seed(seed)
+    np.random.seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+
+def assert_columns(df: pd.DataFrame, required: list[str]):
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise KeyError(f"[ERROR] 누락 컬럼: {missing}")
+    
 def get_engine() -> "Engine":
     DB_USER = os.getenv("DB_USER", "root")
     DB_PASS = os.getenv("DB_PASS", "root1234")
