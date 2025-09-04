@@ -69,5 +69,4 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     #  임시 bin들을 제거 시 아래 코드 활성화
     data.drop(columns=['sat_bin','age_bin','sal_bin','cs_bin','ten_bin','bin'], inplace=True, errors='ignore')
 
-
     return data
