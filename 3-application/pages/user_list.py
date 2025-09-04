@@ -59,45 +59,67 @@ with left:
 df = load_csv(sel_path)
 proba_col, label_col = detect_score_cols(df)
 
-# ---------- 필터/정렬 영역 ----------
-with right:
-    st.subheader("필터")
-    # 확률 슬라이더(0~1)
+# 필터링 --> 사이드바에 배치
+with st.sidebar:
+    st.markdown("### 필터")
     min_p, max_p = st.slider("예측 확률 범위", 0.0, 1.0, (0.0, 1.0), 0.01)
-    # 정렬 기준
-    sort_desc = st.toggle("확률 내림차순 정렬", value=True)
-    # 간단 텍스트 검색(성/ID)
-    q = st.text_input("검색(성/ID 포함)", "")
+    geos = st.multiselect("국가(Geography)", sorted(df["Geography"].unique()))
+    genders = st.multiselect("성별(Gender)", sorted(df["Gender"].unique()))
+    age = st.slider("나이 범위", int(df.Age.min()), int(df.Age.max()),
+                    (int(df.Age.min()), int(df.Age.max())))
+    credit = st.slider("신용점수 범위", 300, 850, (300, 850))
+    complain = st.multiselect("Complain 여부", sorted(df["Complain"].map({0:"No",1:"Yes"}).unique()))
+
+
+# # ---------- 필터/정렬 영역 ----------
+# with right:
+#     st.subheader("필터")
+#     # 확률 슬라이더(0~1)
+#     min_p, max_p = st.slider("예측 확률 범위", 0.0, 1.0, (0.0, 1.0), 0.01)
+#     # 정렬 기준
+#     sort_desc = st.toggle("확률 내림차순 정렬", value=True)
+#     # 간단 텍스트 검색(성/ID)
+#     q = st.text_input("검색(성/ID 포함)", "")
 
 # ---------- 리스트(요약) 빌드 ----------
 # 존재 가능성이 높은 핵심 컬럼 추려서 요약 리스트 만들기
+
+keyword = st.text_input("검색(성/ID 포함)")
+
 base_cols = []
-for c in ["CustomerId", "Surname", "Age", "Geography", "Gender", "CreditScore"]:
+for c in ["CustomerId", "Age", "Gender", "Geography", "CreditScore", "NumOfProducts"]:
     if c in df.columns:
         base_cols.append(c)
-list_cols = base_cols + [proba_col, label_col]
+list_cols = base_cols + [proba_col]
 
 list_df = df[list_cols].copy()
-list_df.rename(columns={proba_col: "score", label_col: "label"}, inplace=True)
+list_df["이탈율"] = list_df[proba_col].round(3)
+list_df.rename(columns={proba_col: "proba"}, inplace=True)
+list_df= list_df.drop(["proba"],axis=1)
+# list_df.columns = ["CustomerId", "나이", "성별", "지역", "신용점수", "가입상품","이탈율"]
+# list_df.rename(columns={pruuoba_col: "이탈율"}, inplace=True)
 
 # 필터 적용
-list_df = list_df[(list_df["score"] >= min_p) & (list_df["score"] <= max_p)]
-if q:
-    q_lower = q.lower()
+list_df = list_df[(list_df["이탈율"] >= min_p) & (list_df["이탈율"] <= max_p)]
+if keyword:
+    keyword_lower = keyword.lower()
     mask = pd.Series([False] * len(list_df))
     if "Surname" in list_df.columns:
-        mask = mask | list_df["Surname"].astype(str).str.lower().str.contains(q_lower, na=False)
+        mask = mask | list_df["Surname"].astype(str).str.lower().str.contains(keyword_lower, na=False)
     if "CustomerId" in list_df.columns:
-        mask = mask | list_df["CustomerId"].astype(str).str.contains(q_lower, na=False)
+        mask = mask | list_df["CustomerId"].astype(str).str.contains(keyword_lower, na=False)
     list_df = list_df[mask]
 
-# 정렬
-list_df = list_df.sort_values("score", ascending=not sort_desc)
 
 # ---------- 마스터(리스트) & 선택 ----------
-st.subheader("고객 리스트 (요약)")
+st.subheader("고객 리스트")
 # 보여줄 행 수
 n_show = st.slider("표시 행 수", 5, 200, 30, 5)
+
+# 보여줄 리스트 정렬
+sort_desc = st.toggle("확률 내림차순 정렬", value=True)
+list_df = list_df.sort_values("이탈율", ascending=not sort_desc)
+
 preview_df = list_df.head(n_show).reset_index(drop=True)
 
 # 원본 매핑을 위한 숨김 인덱스 보존
@@ -113,7 +135,11 @@ gob.configure_pagination(paginationAutoPageSize=True)
 # score 포맷
 if "score" in preview_df.columns:
     gob.configure_column("score", type=["numericColumn"], valueFormatter="value.toFixed(3)")
-
+    gob.configure_grid_options(
+        suppressCellSelection=True,         # 셀만 하이라이트 안 됨
+        suppressRowClickSelection=False,    # 행 클릭으로 선택 가능
+        rowSelection="single"
+    )
 # (선택) 숨김 컬럼
 gob.configure_column("_orig_idx", hide=True)
 
