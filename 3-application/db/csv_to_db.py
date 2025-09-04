@@ -1,4 +1,4 @@
-# save as load_rfm_once.py
+#csv_to db.py
 import os
 import sys
 import csv
@@ -68,21 +68,37 @@ def exec_multi(cur, sql):
     for stmt in [s.strip() for s in sql.split(";") if s.strip()]:
         cur.execute(stmt + ";")
 
+# def load_csv_via_local_infile(cur, table, csv_path, columns):
+#     q = f"""
+#     LOAD DATA LOCAL INFILE %s
+#     INTO TABLE {table}
+#     FIELDS TERMINATED BY ',' ENCLOSED BY '"'
+#     LINES TERMINATED BY '\\n'
+#     IGNORE 1 LINES
+#     ({columns});
+#     """
+#     # 세션에서 local_infile 켜보되, 서버가 GLOBAL만 허용해도 예외처리로 폴백함
+#     try:
+#         cur.execute("SET SESSION local_infile=1;")
+#     except Exception:
+#         pass
+#     cur.execute(q, (csv_path,))
 def load_csv_via_local_infile(cur, table, csv_path, columns):
     q = f"""
     LOAD DATA LOCAL INFILE %s
+    REPLACE
     INTO TABLE {table}
     FIELDS TERMINATED BY ',' ENCLOSED BY '"'
     LINES TERMINATED BY '\\n'
     IGNORE 1 LINES
     ({columns});
     """
-    # 세션에서 local_infile 켜보되, 서버가 GLOBAL만 허용해도 예외처리로 폴백함
     try:
         cur.execute("SET SESSION local_infile=1;")
     except Exception:
         pass
     cur.execute(q, (csv_path,))
+
 
 def load_csv_row_by_row(cur, table, csv_path, insert_sql, expected_cols):
     with open(csv_path, newline="", encoding="utf-8") as f:
@@ -100,11 +116,33 @@ def load_csv_row_by_row(cur, table, csv_path, insert_sql, expected_cols):
 # =========================
 # SQL blocks
 # =========================
-DDL_STG = """
-DROP TABLE IF EXISTS stg_bank_churn;
-CREATE TABLE stg_bank_churn (
-  RowNumber        INT,
-  CustomerId       BIGINT,
+# DDL_STG = """
+# DROP TABLE IF EXISTS stg_bank_churn;
+# CREATE TABLE stg_bank_churn (
+#   RowNumber        INT,
+#   CustomerId       BIGINT,
+#   Surname          VARCHAR(100),
+#   CreditScore      INT,
+#   Geography        VARCHAR(32),
+#   Gender           VARCHAR(16),
+#   Age              INT,
+#   Tenure           INT,
+#   Balance          DECIMAL(18,2),
+#   NumOfProducts    INT,
+#   HasCrCard        TINYINT,
+#   IsActiveMember   TINYINT,
+#   EstimatedSalary  DECIMAL(18,2),
+#   Exited           TINYINT,
+#   _loaded_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+#   INDEX ix_stg_customer (CustomerId),
+#   INDEX ix_stg_exited (Exited)
+# ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+# """
+DDL_CUSTOMER = """
+DROP TABLE IF EXISTS bank_customer;
+CREATE TABLE bank_customer (
+  RowNumber        INT NOT NULL,
+  CustomerId       BIGINT NOT NULL,
   Surname          VARCHAR(100),
   CreditScore      INT,
   Geography        VARCHAR(32),
@@ -118,16 +156,20 @@ CREATE TABLE stg_bank_churn (
   EstimatedSalary  DECIMAL(18,2),
   Exited           TINYINT,
   _loaded_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  INDEX ix_stg_customer (CustomerId),
-  INDEX ix_stg_exited (Exited)
+  PRIMARY KEY (CustomerId),
+  UNIQUE KEY uk_rownum (RowNumber),
+  KEY ix_geo (Geography),
+  KEY ix_exited (Exited),
+  KEY ix_surname (Surname)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 """
+
 
 DDL_RFM = """
 DROP TABLE IF EXISTS rfm_result_once;
 CREATE TABLE rfm_result_once (
   customer_id     BIGINT PRIMARY KEY,
-  surname         VARCHAR(100) NULL,   -- 👈 추가
+  surname         VARCHAR(100) NULL,
   recency_days    INT NOT NULL,
   frequency_90d   INT NOT NULL,
   monetary_90d    DECIMAL(18,2) NOT NULL,
@@ -158,11 +200,11 @@ DROP TEMPORARY TABLE IF EXISTS tmp_rfm;
 CREATE TEMPORARY TABLE tmp_rfm AS
 SELECT
   s.CustomerId                                   AS customer_id,
-  s.Surname                                      AS surname,       -- 👈 추가
+  s.Surname                                      AS surname,
   GREATEST(0, (3650 - COALESCE(s.Tenure,0)*365)) AS recency_days,
   COALESCE(s.NumOfProducts, 0)                   AS frequency_90d,
   COALESCE(s.Balance, 0.0)                       AS monetary_90d
-FROM stg_bank_churn s;
+FROM bank_customer s;   -- ✅ 변경
 """
 
 SQL_TMP_SCORED = """
@@ -170,7 +212,7 @@ DROP TEMPORARY TABLE IF EXISTS tmp_scored;
 CREATE TEMPORARY TABLE tmp_scored AS
 SELECT
   customer_id,
-  surname,   -- 👈 추가
+  surname,
   recency_days, frequency_90d, monetary_90d,
   (6 - NTILE(5) OVER (ORDER BY recency_days DESC)) AS r_score,
   NTILE(5) OVER (ORDER BY frequency_90d ASC)       AS f_score,
@@ -208,15 +250,13 @@ ON DUPLICATE KEY UPDATE
 
 # RowNumber로 들어온 점수 CSV를 CustomerId 기준으로 정규화
 SQL_FIX_SCORE_IDS = """
--- 1) src_id 백업
 ALTER TABLE stg_churn_score
   ADD COLUMN src_id BIGINT NULL AFTER customer_id;
 
 UPDATE stg_churn_score SET src_id = customer_id;
 
--- 2) RowNumber -> CustomerId 매핑 업데이트 (매칭되는 행에만)
 UPDATE stg_churn_score s
-JOIN stg_bank_churn b
+JOIN bank_customer b           -- ✅ 변경
   ON b.RowNumber = s.src_id
 SET s.customer_id = b.CustomerId;
 """
@@ -265,15 +305,15 @@ def main():
         with conn.cursor() as cur:
             # Create tables
             print(">> Create tables...")
-            exec_multi(cur, DDL_STG)
+            exec_multi(cur, DDL_CUSTOMER)   # ✅ bank_customer 생성
             exec_multi(cur, DDL_RFM)
             exec_multi(cur, DDL_SCORE)
 
-            # Load stg_bank_churn
-            print(">> Load stg_bank_churn from CSV via LOCAL INFILE...")
+            # Load bank_customer (from CSV)
+            print(">> Load bank_customer from CSV via LOCAL INFILE...")
             try:
                 load_csv_via_local_infile(
-                    cur, "stg_bank_churn", bank_csv,
+                    cur, "bank_customer", bank_csv,
                     "RowNumber, CustomerId, Surname, CreditScore, Geography, Gender, Age, Tenure, "
                     "Balance, NumOfProducts, HasCrCard, IsActiveMember, EstimatedSalary, Exited"
                 )
@@ -281,16 +321,32 @@ def main():
             except Exception as e:
                 print(f"   - LOCAL INFILE failed ({e}); fallback to row-by-row insert.")
                 insert_sql = """
-                INSERT INTO stg_bank_churn
+                INSERT INTO bank_customer
                 (RowNumber, CustomerId, Surname, CreditScore, Geography, Gender, Age, Tenure,
-                 Balance, NumOfProducts, HasCrCard, IsActiveMember, EstimatedSalary, Exited)
+                Balance, NumOfProducts, HasCrCard, IsActiveMember, EstimatedSalary, Exited)
                 VALUES
                 (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON DUPLICATE KEY UPDATE
+                RowNumber=VALUES(RowNumber),
+                Surname=VALUES(Surname),
+                CreditScore=VALUES(CreditScore),
+                Geography=VALUES(Geography),
+                Gender=VALUES(Gender),
+                Age=VALUES(Age),
+                Tenure=VALUES(Tenure),
+                Balance=VALUES(Balance),
+                NumOfProducts=VALUES(NumOfProducts),
+                HasCrCard=VALUES(HasCrCard),
+                IsActiveMember=VALUES(IsActiveMember),
+                EstimatedSalary=VALUES(EstimatedSalary),
+                Exited=VALUES(Exited),
+                _loaded_at=CURRENT_TIMESTAMP
                 """
                 expected_cols = ["RowNumber","CustomerId","Surname","CreditScore","Geography","Gender",
-                                 "Age","Tenure","Balance","NumOfProducts","HasCrCard",
-                                 "IsActiveMember","EstimatedSalary","Exited"]
-                load_csv_row_by_row(cur, "stg_bank_churn", bank_csv, insert_sql, expected_cols)
+                                "Age","Tenure","Balance","NumOfProducts","HasCrCard",
+                                "IsActiveMember","EstimatedSalary","Exited"]
+                load_csv_row_by_row(cur, "bank_customer", bank_csv, insert_sql, expected_cols)
+
 
             # Optionally load stg_churn_score
             if SCORE_CSV and Path(SCORE_CSV).exists():

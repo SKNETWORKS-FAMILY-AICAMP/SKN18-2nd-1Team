@@ -2,10 +2,12 @@ import os
 import numpy as np
 import pandas as pd
 import streamlit as st
+from utils.ui.ui_tools import metric_with_tooltip, ensure_ui_css
 from sqlalchemy import create_engine, text
 from pages.app_bootstrap import hide_builtin_nav, render_sidebar # 필수 
 hide_builtin_nav()
 render_sidebar()
+ensure_ui_css()
 
 # =========================
 # DB 연결 설정 (환경변수로 오버라이드 가능)
@@ -70,6 +72,16 @@ def seg_color(seg):
         "AT_RISK": "#dc2626",    # red-600
         "LOW": "#6b7280",        # gray-500
     }.get(seg, "#6b7280")
+def seg_color_alpha(seg):
+    # 각 세그먼트별로 alpha=0.5인 rgba 색상 반환
+    colors = {
+        "VIP": (37, 99, 235),      # blue-600
+        "LOYAL": (5, 150, 105),    # emerald-600
+        "AT_RISK": (220, 38, 38),  # red-600
+        "LOW": (107, 114, 128),    # gray-500
+    }
+    r, g, b = colors.get(seg, (107, 114, 128))
+    return f"rgba({r}, {g}, {b}, 0.4)"
 
 def metric_block(container, title, df_seg):
     n = len(df_seg)
@@ -83,7 +95,7 @@ def metric_block(container, title, df_seg):
         <div style="border-radius:16px; padding:16px; background:rgba(0,0,0,0.03);">
           <div style="font-weight:700; font-size:18px; margin-bottom:6px;">{title}</div>
           <div style="display:flex; gap:16px; flex-wrap:wrap;">
-            <div><span style="opacity:.7;">수량</span><br><b>{n:,}</b></div>
+            <div><span style="opacity:.7;">고객수</span><br><b>{n:,}</b></div>
             <div><span style="opacity:.7;">평균 R/F/M</span><br><b>{r_avg:.1f} / {f_avg:.1f} / {m_avg:.1f}</b></div>
             <div><span style="opacity:.7;">평균 Churn</span><br><b>{fmt_pct(risk_avg)}</b></div>
           </div>
@@ -95,8 +107,19 @@ def metric_block(container, title, df_seg):
 # =========================
 # UI
 # =========================
-st.set_page_config(page_title="은행 고객 RFM 그룹화", layout="wide")
-st.title("👥 은행 고객 RFM 그룹화 (VIP / LOYAL / AT_RISK / LOW)")
+st.set_page_config(page_title="고객 그룹", layout="wide")
+st.title("👥 고객 그룹")
+
+# 세그먼트 한글 라벨
+SEGMENT_LABELS = {
+    "VIP": "핵심 고객 (VIP)",
+    "LOYAL": "충성 고객 (LOYAL)",
+    "AT_RISK": "위험 고객 (RISK)",
+    "LOW": "저활성 고객 (LOW)",
+}
+
+def seg_label(code: str) -> str:
+    return SEGMENT_LABELS.get(code, code)
 
 df = load_rfm_joined()
 if df.empty:
@@ -104,11 +127,34 @@ if df.empty:
     st.stop()
 
 # 전역 KPI
-k1, k2, k3, k4 = st.columns(4)
-k1.metric("총 고객 수", f"{len(df):,}")
-k2.metric("평균 R/F/M", f"{df['r_score'].mean():.1f} / {df['f_score'].mean():.1f} / {df['m_score'].mean():.1f}")
-k3.metric("고가치(M≥4)", f"{(df['m_score']>=4).sum():,}", delta=f"{(df['m_score']>=4).mean()*100:.1f}%")
-k4.metric("Churn≥0.6", f"{(df['churn_probability'].fillna(0)>=0.6).sum():,}")
+k1, k2, k3, k4 = st.columns(4) 
+with k1:
+    metric_with_tooltip(
+        "총 고객 수",
+        f"{len(df):,}",
+        tooltip="데이터셋에 포함된 전체 고객 수입니다."
+    )
+with k2:
+    metric_with_tooltip(
+        "평균 R/F/M",
+        f"{df['r_score'].mean():.1f} / {df['f_score'].mean():.1f} / {df['m_score'].mean():.1f}",
+        tooltip="Recency(최근성), Frequency(빈도), Monetary(금액)의 평균 점수입니다."
+    )
+with k3:
+    metric_with_tooltip(
+        "고가치(M≥4)",
+        f"{(df['m_score']>=4).sum():,}",
+        delta=f"{(df['m_score']>=4).mean()*100:.1f}%",
+        tooltip="Monetary 점수가 4 이상인 고객 수와 전체 비율\r\n구매 금액 기준으로 우수한 상위 고객 집단"
+    )
+with k4:
+    metric_with_tooltip(
+        "Churn≥0.6",
+        f"{(df['churn_probability'].fillna(0)>=0.6).sum():,}",
+        tooltip="예측된 이탈 확률이 0.6 이상인 고객 수입니다."
+    )
+    
+st.divider()
 
 # 세그먼트별 데이터프레임
 vip_df = df[df["segment_code"] == "VIP"].copy()
@@ -119,44 +165,48 @@ low_df = df[df["segment_code"] == "LOW"].copy()
 # 선택 상태
 if "selected_segment" not in st.session_state:
     st.session_state.selected_segment = None
+    
+# def make_layout(seg, df):
+#     st.markdown(f"<div style='color:{seg_color(seg)}; font-weight:800; font-size:20px;'>{seg}</div>", unsafe_allow_html=True)
+#     metric_block(st, f"{seg_label(seg)}", df)
+#     if st.button(f"🔍 {seg_label((seg))} 사용자 보기", use_container_width=True):
+#         st.session_state.selected_segment = seg
 
+def make_layout(seg, df):
+    color = seg_color_alpha(seg)
+    st.markdown(
+        f"""
+        <div style="background:{color}; border-radius:12px; padding:16px; margin-bottom:12px; color:white;">
+            <div style="font-weight:800; font-size:20px;">{seg_label(seg)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    metric_block(st, f"{seg_label(seg)}", df)
+    if st.button(f"🔍 {seg_label(seg)} 사용자 보기", use_container_width=True, key=f"btn_{seg}"):
+        st.session_state.selected_segment = seg
+        
 # 4영역 레이아웃
 c1, c2 = st.columns(2)
 c3, c4 = st.columns(2)
-
 with c1:
-    st.markdown(f"<div style='color:{seg_color('VIP')}; font-weight:800; font-size:20px;'>VIP</div>", unsafe_allow_html=True)
-    metric_block(st, "라벨: VIP", vip_df)
-    if st.button("🔍 VIP 사용자 보기", use_container_width=True):
-        st.session_state.selected_segment = "VIP"
-
+    make_layout('VIP', vip_df)
 with c2:
-    st.markdown(f"<div style='color:{seg_color('LOYAL')}; font-weight:800; font-size:20px;'>LOYAL</div>", unsafe_allow_html=True)
-    metric_block(st, "라벨: LOYAL", loyal_df)
-    if st.button("🔍 LOYAL 사용자 보기", use_container_width=True):
-        st.session_state.selected_segment = "LOYAL"
-
+    make_layout('LOYAL', loyal_df)
 with c3:
-    st.markdown(f"<div style='color:{seg_color('AT_RISK')}; font-weight:800; font-size:20px;'>AT_RISK</div>", unsafe_allow_html=True)
-    metric_block(st, "라벨: AT_RISK", risk_df)
-    if st.button("🔍 AT_RISK 사용자 보기", use_container_width=True):
-        st.session_state.selected_segment = "AT_RISK"
-
+    make_layout('AT_RISK', risk_df)
 with c4:
-    st.markdown(f"<div style='color:{seg_color('LOW')}; font-weight:800; font-size:20px;'>LOW</div>", unsafe_allow_html=True)
-    metric_block(st, "라벨: LOW", low_df)
-    if st.button("🔍 LOW 사용자 보기", use_container_width=True):
-        st.session_state.selected_segment = "LOW"
+    make_layout('LOW', low_df)
 
 st.divider()
 
 # 선택된 세그먼트 사용자 목록
 seg = st.session_state.selected_segment
 title_map = {
-    "VIP": "VIP 사용자 목록",
-    "LOYAL": "LOYAL 사용자 목록",
-    "AT_RISK": "AT_RISK 사용자 목록",
-    "LOW": "LOW 사용자 목록",
+    "VIP": "핵심 고객(VIP) 목록",
+    "LOYAL": "충성 고객(LOYAL) 목록",
+    "AT_RISK": "위험 고객(RISK) 목록",
+    "LOW": "저활성 고객(LOW) 목록",
 }
 if seg:
     st.subheader(f"📄 {title_map.get(seg, seg)}")
@@ -188,7 +238,6 @@ if seg:
         .drop(columns=["_m_score", "_churn_prob"])
         .reset_index(drop=True)
     )
-
 
     st.dataframe(seg_df[show_cols], use_container_width=True, height=500)
 
