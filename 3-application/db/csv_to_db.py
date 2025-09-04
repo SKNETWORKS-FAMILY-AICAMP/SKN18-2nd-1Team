@@ -17,7 +17,9 @@ DB_NAME = os.getenv("DB_NAME", "sknproject2")
 # 필수: Churn 원본 CSV 경로(자동 탐색 지원: resolve_bank_csv())
 BANK_CSV_ENV = os.getenv("BANK_CSV", "")
 # 선택: 모델 점수 CSV (컬럼: customer_id,churn_probability) — RowNumber일 경우 자동 보정함
-SCORE_CSV = os.getenv("SCORE_CSV", "")
+SCORE_CSV = os.getenv("SCORE_CSV") or str(
+    Path(__file__).resolve().parents[1] / "assets" / "data" / "churn_scores.csv"
+)
 
 # =========================
 # Helpers
