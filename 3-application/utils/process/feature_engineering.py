@@ -42,4 +42,32 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
         labels=['Low','Medium','High'], include_lowest=True
     )
 
+    # IsActiveMember × HasCrCard (참/거짓 조합)
+    data['ia_x_card'] = data['IsActiveMember'].astype(str) + '_' + data['HasCrCard'].astype(str)
+
+    # 2) Geography × Gender (지역·성별 상호작용)
+    data['geo_x_gender'] = data['Geography'].astype(str) + '_' + data['Gender'].astype(str)
+
+    # 4) Age (bin) × EstimatedSalary (bin)
+    data['age_bin'] = pd.qcut(data['Age'], q=5, duplicates='drop')
+    data['sal_bin'] = pd.qcut(data['EstimatedSalary'], q=5, duplicates='drop')
+    data['agebin_x_salbin'] = data['age_bin'].astype(str) + '_' + data['sal_bin'].astype(str)
+
+    # 6) Tenure (bin) × IsActiveMember
+    data['ten_bin'] = pd.qcut(data['Tenure'], q=5, duplicates='drop')
+    data['tenbin_x_ia'] = data['ten_bin'].astype(str) + '_' + data['IsActiveMember'].astype(str)
+
+    # 7) Card Type × IsActiveMember  (카디널리티 낮아 안전)
+    data['cardtype_x_ia'] = data['Card Type'].astype(str) + '_' + data['IsActiveMember'].astype(str)
+
+    # ===== C. 수치형 상호작용(트리/선형모델 모두에서 유효) =====
+    # 스케일 민감한 선형 모델을 쓸 땐 이후 표준화 권장
+    data['age_x_balance'] = data['Age'] * data['Balance']
+    data['age_x_products'] = data['Age'] * data['NumOfProducts']
+    data['balance_x_products'] = data['Balance'] * data['NumOfProducts']
+
+    #  임시 bin들을 제거 시 아래 코드 활성화
+    data.drop(columns=['sat_bin','age_bin','sal_bin','cs_bin','ten_bin','bin'], inplace=True, errors='ignore')
+
+
     return data
