@@ -1,20 +1,26 @@
-# service/utils/process/preprocessor.py
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+# utils/process/preprocessor.py
+import numpy as np
+import pandas as pd
 from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-def make_preprocessor(feature_groups) -> ColumnTransformer:
-    numeric = feature_groups['numeric']
-    binary  = feature_groups['binary']
-    onehot  = feature_groups['onehot']
+CATEGORICAL = ["Geography","Gender","Card Type","Surname"]
+NUMERIC     = [
+    "CreditScore","Age","Tenure","Balance","NumOfProducts",
+    "HasCrCard","IsActiveMember","EstimatedSalary","Complain",
+    "Satisfaction Score","Point Earned"
+]
 
-    transformers = []
-    if numeric:
-        transformers.append(("num", Pipeline([("scaler", StandardScaler())]), numeric))
-    if binary:
-        transformers.append(("bin", "passthrough", binary))
-    if onehot:
-        transformers.append(("oh", OneHotEncoder(handle_unknown='ignore'), onehot))
+def build_preprocessor(df: pd.DataFrame) -> ColumnTransformer:
+    cats = [c for c in CATEGORICAL if c in df.columns]
+    nums = [c for c in NUMERIC if c in df.columns]
 
-    preproc = ColumnTransformer(transformers=transformers, remainder='drop', sparse_threshold=0.3)
-    return preproc
+    pre = ColumnTransformer(
+        transformers=[
+            ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), cats),
+            ("num", StandardScaler(), nums),
+        ],
+        remainder="drop",
+        verbose_feature_names_out=False,
+    )
+    return pre
