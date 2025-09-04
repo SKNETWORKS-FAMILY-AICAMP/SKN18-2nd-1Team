@@ -2,7 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 import streamlit as st
-from utils.ui.ui_tools import metric_with_tooltip, ensure_ui_css
+from utils.ui.ui_tools import metric_with_tooltip, ensure_ui_css, render_segment_kpis
 from sqlalchemy import create_engine, text
 from pages.app_bootstrap import hide_builtin_nav, render_sidebar # 필수 
 hide_builtin_nav()
@@ -209,8 +209,10 @@ title_map = {
     "LOW": "저활성 고객(LOW) 목록",
 }
 if seg:
-    st.subheader(f"📄 {title_map.get(seg, seg)}")
+    # 제목 (한글 라벨 사용)
+    st.subheader(f"📄 {seg_label(seg)} 목록")
 
+    # 세그먼트별 데이터프레임
     seg_df = {
         "VIP": vip_df,
         "LOYAL": loyal_df,
@@ -218,34 +220,72 @@ if seg:
         "LOW": low_df
     }[seg].copy()
 
-    # 정렬 및 표시 컬럼
-    show_cols = ["customer_id", "surname", "r_score", "f_score", "m_score", "rfm_code",
-                 "segment_code", "churn_probability", "monetary_90d", "recency_days", "frequency_90d"]
+    # 안전 캐스팅
+    for col in ["r_score", "f_score", "m_score", "churn_probability", "monetary_90d", "recency_days", "frequency_90d"]:
+        if col in seg_df.columns:
+            seg_df[col] = pd.to_numeric(seg_df[col], errors="coerce")
+
+    # === (NEW) 상단 KPI 보여주기 ===
+    render_segment_kpis(seg_df)
+
+    # 표시 컬럼 구성
+    show_cols = [
+        "customer_id", "surname",
+        "segment_code",  # (원본 코드도 함께 보려면 유지)
+        "r_score", "f_score", "m_score", "rfm_code",
+        "churn_probability", "monetary_90d", "recency_days", "frequency_90d",
+    ]
     for c in show_cols:
         if c not in seg_df.columns:
-            seg_df[c] = np.nan
+            seg_df[c] = pd.NA
 
-    # 정렬: 고가치/고위험 우선
-    # seg_df = seg_df.sort_values(["m_score", seg_df["churn_probability"].fillna(0)], ascending=[False, False]).reset_index(drop=True)
-
-    # NaN을 0으로, 문자열이면 숫자로 강제 변환 후 정렬
+    # 정렬 기준(기본: 고가치/고위험 우선)
     seg_df = (
         seg_df.assign(
-            _m_score = pd.to_numeric(seg_df.get("m_score"), errors="coerce").fillna(-1),
-            _churn_prob = pd.to_numeric(seg_df.get("churn_probability"), errors="coerce").fillna(0),
+            _m_score=seg_df["m_score"].fillna(-1),
+            _cp=seg_df["churn_probability"].fillna(0.0),
         )
-        .sort_values(["_m_score", "_churn_prob"], ascending=[False, False])
-        .drop(columns=["_m_score", "_churn_prob"])
+        .sort_values(["_m_score", "_cp"], ascending=[False, False])
+        .drop(columns=["_m_score", "_cp"])
         .reset_index(drop=True)
     )
 
-    st.dataframe(seg_df[show_cols], use_container_width=True, height=500)
+    # === (NEW) 보기 모드 버튼: 전체 vs 위험 Top 10 ===
+    btn_all, btn_top = st.columns([1,1])
+    if f"view_mode_{seg}" not in st.session_state:
+        st.session_state[f"view_mode_{seg}"] = "all"
+
+    with btn_all:
+        if st.button("📃 전체 보기", use_container_width=True, key=f"{seg}_all"):
+            st.session_state[f"view_mode_{seg}"] = "all"
+    with btn_top:
+        if st.button("🔥 Churn 상위 10명", use_container_width=True, key=f"{seg}_top10"):
+            st.session_state[f"view_mode_{seg}"] = "top10"
+
+    view_mode = st.session_state[f"view_mode_{seg}"]
+
+    # === (NEW) 모드에 따른 데이터 선택 ===
+    if view_mode == "top10":
+        view_df = (
+            seg_df.assign(_cp=seg_df["churn_probability"].fillna(0.0))
+                  .sort_values("_cp", ascending=False)
+                  .drop(columns=["_cp"])
+                  .head(10)
+                  .reset_index(drop=True)
+        )
+        st.caption("※ 이 세그먼트에서 예측 이탈확률이 가장 높은 10명")
+    else:
+        view_df = seg_df
+
+    # 표 렌더
+    st.dataframe(view_df[show_cols], use_container_width=True, height=520)
 
     # 다운로드
+    file_suffix = "top10" if view_mode == "top10" else "all"
     st.download_button(
-        "⬇️ 이 세그먼트 CSV 다운로드",
-        data=seg_df[show_cols].to_csv(index=False).encode("utf-8"),
-        file_name=f"{seg.lower()}_customers.csv",
+        "⬇️ CSV 다운로드",
+        data=view_df[show_cols].to_csv(index=False).encode("utf-8"),
+        file_name=f"{seg.lower()}_{file_suffix}_customers.csv",
         mime="text/csv"
     )
 else:
