@@ -1,10 +1,13 @@
 # utils/process/feature_engineering.py
 import pandas as pd
+import numpy as np
+
 
 REQUIRED_COLUMNS = [
     'CreditScore','Age','Tenure','Balance','NumOfProducts','IsActiveMember',
-    'Geography','Satisfaction Score','Exited'
-] #complain은 제외라 미포함
+    'Geography','Satisfaction Score','Exited',
+    'HasCrCard','Gender','EstimatedSalary','Card Type'
+]#complain은 제외라 미포함
 
 def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     data = df.copy()
