@@ -1,26 +1,55 @@
 # 3-application/pages/02_user_list.py
-# Read at DB version
+# Read at DB version (Tuple Cursor fix)
+import os
 import streamlit as st
 import pandas as pd
-from pathlib import Path
-from pages.app_bootstrap import hide_builtin_nav, render_sidebar # 필수 
-from utils.process.read_db import read_df #DB에서 df 읽어오는 함수
-from st_aggrid import AgGrid, GridOptionsBuilder # 리스트 클릭 상호작용 가능하게 해주는 lib
+import pymysql
 from dotenv import load_dotenv
+from st_aggrid import AgGrid, GridOptionsBuilder
 
-load_dotenv()  # .env 로드
+from pages.app_bootstrap import hide_builtin_nav, render_sidebar  # 공통 UI
 
-# 공통
+# ──────────────────────────────────────────────────────────────────────────────
+# 1) .env 로드 + 페이지 공통
+# ──────────────────────────────────────────────────────────────────────────────
+load_dotenv()
+
+st.set_page_config(page_title="고객 이탈률", page_icon="📊", layout="wide")
 hide_builtin_nav()
 render_sidebar()
 
-st.set_page_config(page_title="고객 이탈률", page_icon="📊", layout="wide")
-
 st.title("📊 고객 이탈률")
 
-# ---------- 유틸 ----------
-@st.cache_data(ttl=60) #로드 되는데 60초 캐시
-def load_from_db() -> pd.DataFrame: #db에 올라간 bank_customer, stg_churn_score table 조합
+# ──────────────────────────────────────────────────────────────────────────────
+# 2) DB 연결(일반 Cursor) + pandas.read_sql 전용 함수
+#    - DictCursor(=dict row)는 pandas.read_sql과 궁합이 안 맞아
+#      값 대신 'customer_id' 같은 문자열이 반복되는 문제가 발생합니다.
+#    - 반드시 tuple 커서(Cursor)로 연결하세요.
+# ──────────────────────────────────────────────────────────────────────────────
+def _get_conn_tuple():
+    return pymysql.connect(
+        host=os.getenv("DB_HOST", "127.0.0.1"),
+        port=int(os.getenv("DB_PORT", "3306")),
+        user=os.getenv("DB_USER", "root"),
+        password=os.getenv("DB_PASS", "rootpass"),
+        database=os.getenv("DB_NAME", "sknproject2"),
+        charset="utf8mb4",
+        cursorclass=pymysql.cursors.Cursor,  # ✅ tuple cursor (중요)
+        autocommit=True,
+    )
+
+def read_df(sql: str, params=None) -> pd.DataFrame:
+    conn = _get_conn_tuple()
+    try:
+        return pd.read_sql(sql, conn, params=params)
+    finally:
+        conn.close()
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 3) 데이터 로드
+# ──────────────────────────────────────────────────────────────────────────────
+@st.cache_data(ttl=60)
+def load_from_db() -> pd.DataFrame:
     sql = """
     SELECT
       b.CustomerId, b.Surname, b.CreditScore, b.Geography, b.Gender,
@@ -32,16 +61,14 @@ def load_from_db() -> pd.DataFrame: #db에 올라간 bank_customer, stg_churn_sc
       ON s.customer_id = b.CustomerId
     """
     df = read_df(sql)
-    #컬럼명 수정
-    df["predicted_exited"] = (df["predicted_proba"] >= 0.5).astype(int)
+    # 예측 라벨 파생
+    if "predicted_proba" in df.columns:
+        df["predicted_exited"] = (df["predicted_proba"] >= 0.5).astype(int)
     return df
 
 df = load_from_db()
 
 def detect_score_cols(df: pd.DataFrame) -> tuple[str, str]:
-    """
-    결과 df에서 확률/레이블 컬럼 자동 탐지
-    """
     proba_candidates = ["predicted_proba_oof", "predicted_proba"]
     label_candidates = ["predicted_exited_oof", "predicted_exited"]
     proba_col = next((c for c in proba_candidates if c in df.columns), None)
@@ -52,76 +79,58 @@ def detect_score_cols(df: pd.DataFrame) -> tuple[str, str]:
 
 proba_col, label_col = detect_score_cols(df)
 
+# ──────────────────────────────────────────────────────────────────────────────
+# 4) 우측 필터 영역
+# ──────────────────────────────────────────────────────────────────────────────
 left, right = st.columns([2, 1])
-with left:
-    # file_labels = [f"{p.name}  —  {p.stat().st_size/1024:.1f} KB" for p in result_files]
-    # sel_idx = st.selectbox("결과 CSV 선택", options=range(len(result_files)), format_func=lambda i: file_labels[i])
-    # sel_path = result_files[sel_idx]
-    # st.caption(f"선택 파일: `{sel_path}`")
-    pass
-
-
-# ---------- 필터/정렬 영역 ----------
 with right:
     st.subheader("필터")
-    # 확률 슬라이더(0~1)
     min_p, max_p = st.slider("예측 확률 범위", 0.0, 1.0, (0.0, 1.0), 0.01)
-    # 정렬 기준
     sort_desc = st.toggle("확률 내림차순 정렬", value=True)
-    # 간단 텍스트 검색(성/ID)
     q = st.text_input("검색(성/ID 포함)", "")
 
-# ---------- 리스트(요약) 빌드 ----------
-# 존재 가능성이 높은 핵심 컬럼 추려서 요약 리스트 만들기
-base_cols = []
-for c in ["CustomerId", "Surname", "Age", "Geography", "Gender", "CreditScore"]:
-    if c in df.columns:
-        base_cols.append(c)
+# ──────────────────────────────────────────────────────────────────────────────
+# 5) 요약 리스트(DataFrame) 구성
+# ──────────────────────────────────────────────────────────────────────────────
+base_cols = [c for c in ["CustomerId", "Surname", "Age", "Geography", "Gender", "CreditScore"] if c in df.columns]
 list_cols = base_cols + [proba_col, label_col]
 
 list_df = df[list_cols].copy()
 list_df.rename(columns={proba_col: "score", label_col: "label"}, inplace=True)
 
-# 필터 적용
+# 필터
 list_df = list_df[(list_df["score"] >= min_p) & (list_df["score"] <= max_p)]
 if q:
     q_lower = q.lower()
-    mask = pd.Series([False] * len(list_df))
+    mask = pd.Series(False, index=list_df.index)
     if "Surname" in list_df.columns:
-        mask = mask | list_df["Surname"].astype(str).str.lower().str.contains(q_lower, na=False)
+        mask |= list_df["Surname"].astype(str).str.lower().str.contains(q_lower, na=False)
     if "CustomerId" in list_df.columns:
-        mask = mask | list_df["CustomerId"].astype(str).str.contains(q_lower, na=False)
+        mask |= list_df["CustomerId"].astype(str).str.contains(q_lower, na=False)
     list_df = list_df[mask]
 
 # 정렬
 list_df = list_df.sort_values("score", ascending=not sort_desc)
 
-# ---------- 마스터(리스트) & 선택 ----------
+# ──────────────────────────────────────────────────────────────────────────────
+# 6) 그리드 & 선택
+# ──────────────────────────────────────────────────────────────────────────────
 st.subheader("고객 리스트 (요약)")
-# 보여줄 행 수
 n_show = st.slider("표시 행 수", 5, 200, 30, 5)
 preview_df = list_df.head(n_show).reset_index(drop=True)
 
-# 원본 매핑을 위한 숨김 인덱스 보존
 if "_orig_idx" not in preview_df.columns:
     preview_df.insert(0, "_orig_idx", preview_df.index)
 
-# ---- AgGrid 옵션 구성
 gob = GridOptionsBuilder.from_dataframe(preview_df)
 gob.configure_default_column(sortable=True, filter=True, resizable=True)
 gob.configure_selection(selection_mode="single", use_checkbox=False)
 gob.configure_pagination(paginationAutoPageSize=True)
-
-# score 포맷
 if "score" in preview_df.columns:
     gob.configure_column("score", type=["numericColumn"], valueFormatter="value.toFixed(3)")
-
-# (선택) 숨김 컬럼
 gob.configure_column("_orig_idx", hide=True)
-
 grid_options = gob.build()
 
-# ---- AgGrid 렌더(행 클릭 이벤트 수신)
 grid_resp = AgGrid(
     preview_df,
     gridOptions=grid_options,
@@ -133,46 +142,30 @@ grid_resp = AgGrid(
     key="customers_grid",
 )
 
-# 선택된 행 받기
 selected_rows = grid_resp.get("selected_rows", [])
 if isinstance(selected_rows, pd.DataFrame):
-    selected_rows = selected_rows.to_dict("records")  # ✅ DF → list[dict]
-
-if selected_rows and len(selected_rows) > 0:          # ✅ 모호성 제거m
-    sel_row = selected_rows[0]
-    # 고유키로 매핑 (CustomerId 우선)
-    if "CustomerId" in sel_row:
-        sel_id = str(sel_row["CustomerId"])
-    else:
-        # 숨김 인덱스로 원본 df 매핑
-        sel_id = str(sel_row.get("_orig_idx", 0))
-else:
-    sel_id = None
+    selected_rows = selected_rows.to_dict("records")
+sel_row = selected_rows[0] if selected_rows else None
+sel_id = str(sel_row["CustomerId"]) if sel_row and "CustomerId" in sel_row else None
 
 st.markdown("---")
 
-# ---------- 디테일(선택 고객 상세) ----------
+# ──────────────────────────────────────────────────────────────────────────────
+# 7) 상세
+# ──────────────────────────────────────────────────────────────────────────────
 st.subheader("고객 상세")
-
 if not sel_id:
     st.info("리스트에서 고객 행을 클릭하면 상세 정보가 여기에 표시됩니다.")
 else:
-
-    detail_row = None
-    if "CustomerId" in df.columns:
-        try:
-            cid = int(sel_id)
-            detail_row = df[df["CustomerId"] == cid].head(1)
-        except ValueError:
-            detail_row = df[df["CustomerId"].astype(str) == sel_id].head(1)
-    else:
-        # (CustomerId가 없다면, preview_df에서 인덱스를 hidden 컬럼으로 넘겨 받아 원본 df에 매핑하는 로직을 추가)
-        pass
+    try:
+        cid = int(sel_id)
+        detail_row = df[df["CustomerId"] == cid].head(1)
+    except ValueError:
+        detail_row = df[df["CustomerId"].astype(str) == sel_id].head(1)
 
     if detail_row is None or detail_row.empty:
         st.warning("선택한 고객의 상세정보를 찾을 수 없습니다.")
     else:
-        # score/label 컬럼명 자동 감지 함수 사용 가정(detect_score_cols)
         proba_col, label_col = detect_score_cols(df)
         score_val = float(detail_row[proba_col].values[0])
         label_val = int(detail_row[label_col].values[0])
