@@ -97,7 +97,7 @@ with st.sidebar:
         default=[]
     )
 
-keyword = st.text_input("ID포함")
+keyword = st.text_input("검색(ID/성명)")
 
 base_cols = [c for c in ["CustomerId", "Complain", "Age", "Gender", "Geography", "CreditScore", "NumOfProducts"] if c in df.columns]
 list_cols = base_cols + [proba_col]
@@ -159,14 +159,27 @@ if genders:
     list_df = list_df[list_df["성별"].isin(genders)]
 
 # 검색어 필터링(성/ID)
+# --- 검색어 필터링 (성명은 df에서 검색, CustomerId는 list_df에서 직접 검색)
 if keyword:
-    keyword_lower = keyword.lower()
-    mask = pd.Series([False] * len(list_df))
-    if "Surname" in list_df.columns:
-        mask = mask | list_df["Surname"].astype(str).str.lower().str.contains(keyword_lower, na=False)
-    if "CustomerId" in list_df.columns:
-        mask = mask | list_df["CustomerId"].astype(str).str.contains(keyword_lower, na=False)
-    list_df = list_df[mask]
+    kw = keyword.strip()
+    if kw:
+        mask = pd.Series(False, index=list_df.index)
+
+        # 1) CustomerId 검색 (list_df 자체에 존재)
+        if "CustomerId" in list_df.columns:
+            mask |= list_df["CustomerId"].astype(str).str.contains(kw, na=False, regex=False)
+
+        # 2) 성명 검색 (df에서 찾고, 해당 CustomerId만 필터링)
+        if "Surname" in df.columns:
+            matched_ids = df.loc[
+                df["Surname"].astype(str).str.contains(kw, case=False, na=False, regex=False),
+                "CustomerId"
+            ].astype(str).tolist()
+
+            if matched_ids:
+                mask |= list_df["CustomerId"].astype(str).isin(matched_ids)
+
+        list_df = list_df[mask]
 
 # ---------- 마스터(리스트) & 선택 ----------
 st.subheader("고객 리스트")
