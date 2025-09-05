@@ -97,7 +97,7 @@ with st.sidebar:
         default=[]
     )
 
-keyword = st.text_input("검색(성/ID 포함)")
+keyword = st.text_input("ID포함")
 
 base_cols = [c for c in ["CustomerId", "Complain", "Age", "Gender", "Geography", "CreditScore", "NumOfProducts"] if c in df.columns]
 list_cols = base_cols + [proba_col]
