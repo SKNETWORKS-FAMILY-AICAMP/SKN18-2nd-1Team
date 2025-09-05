@@ -6,18 +6,20 @@
 # 옵션: stg_churn_score 테이블 적재, vw_rfm_for_app 뷰 생성
 # ------------------------------------------------------------
 import os
+import sys
 import pickle
 from pathlib import Path
 from datetime import datetime
+
 import numpy as np
 import pandas as pd
-import sys
-from pathlib import Path
+import pymysql
+from sqlalchemy import create_engine, text
 
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 
-
+# --- import 경로 보정 (3-application를 sys.path에 추가) ---
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 # 프로젝트 경로 ------------------------------------------------
@@ -30,8 +32,6 @@ MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
 # ENV ---------------------------------------------------------
 OUT_CSV       = os.getenv("OUT_CSV",  str(ASSETS_DIR / "churn_scores.csv"))
-WRITE_DB      = os.getenv("WRITE_DB", "false").lower() in ("1","true","yes")
-CREATE_VIEW   = os.getenv("CREATE_VIEW", "false").lower() in ("1","true","yes")
 RANDOM_STATE  = int(os.getenv("RANDOM_STATE", "42"))
 N_FOLDS       = int(os.getenv("N_FOLDS", "5"))
 DB_USER       = os.getenv("DB_USER", "root")
@@ -41,15 +41,18 @@ DB_PORT       = os.getenv("DB_PORT", "3306")
 DB_NAME       = os.getenv("DB_NAME", "sknproject2")
 DB_TABLE      = os.getenv("DB_TABLE", "stg_churn_score")
 
+def _flag(name: str, default="false") -> bool:
+    """런타임에 환경변수를 읽어 불리언으로 반환(토글 반영 보장)."""
+    return os.getenv(name, default).lower() in ("1", "true", "yes")
+
 # utils.process 모듈 사용(데이터 로드/피처엔지니어링) -------------------------
-# (__init__.py에서 공개 API로 export됨)
-from utils.process import load_csv_from_data, engineer_features  #  
+from utils.process import load_csv_from_data, engineer_features
 
 # CatBoost / SMOTENC ------------------------------------------
 from catboost import CatBoostClassifier, Pool
 try:
     from imblearn.over_sampling import SMOTENC
-except Exception as _:
+except Exception:
     SMOTENC = None  # imblearn 미설치 환경에서도 동작하도록
 
 # 추천/상호작용 피처(노트북 기준) -------------------------------------------
@@ -75,7 +78,7 @@ def _cat_cols_and_idx(X: pd.DataFrame):
 def _evaluate_catboost_cv(X: pd.DataFrame, y: np.ndarray, variant: str, cat_idx, random_state=42):
     """
     variant: 'smote' or 'balanced'
-    반환: (metrics_dict, oof_best_threshold)
+    반환: (metrics_dict, oof_best_threshold, mean_acc)
     """
     skf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=random_state)
 
@@ -147,31 +150,65 @@ def _evaluate_catboost_cv(X: pd.DataFrame, y: np.ndarray, variant: str, cat_idx,
     report = {"ACC": fmt(accs), "F1": fmt(f1s), "Precision": fmt(precs), "Recall": fmt(recs), "ROC_AUC": fmt(aucs)}
     return report, float(best_th), float(np.mean(accs))
 
-def _write_scores_and_view(df_scores: pd.DataFrame):
-    from sqlalchemy import create_engine, text
+# --- DB 보장 & 쓰기 도우미 -----------------------------------
+def _ensure_db_and_score_table():
+    """DB와 점수 테이블을 '존재 보장'한 뒤 SQLAlchemy Engine 반환."""
+    # 1) DB 보장
+    conn = pymysql.connect(
+        host=DB_HOST, port=int(DB_PORT), user=DB_USER, password=DB_PASS,
+        charset="utf8mb4", autocommit=True
+    )
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"CREATE DATABASE IF NOT EXISTS `{DB_NAME}` "
+                "DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+            )
+    finally:
+        conn.close()
+
+    # 2) 테이블 보장
     url = f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     eng = create_engine(url, pool_pre_ping=True)
+    with eng.begin() as c:
+        c.exec_driver_sql(f"""
+        CREATE TABLE IF NOT EXISTS {DB_TABLE} (
+          customer_id        BIGINT NOT NULL,
+          churn_probability  DECIMAL(9,6) NOT NULL,
+          _scored_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (customer_id),
+          INDEX ix_score_prob (churn_probability)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        """)
+    return eng
+
+def _write_scores_and_view(df_scores: pd.DataFrame):
+    eng = _ensure_db_and_score_table()  # ✅ DB/테이블 보장 후 엔진 반환
     df_scores.to_sql(DB_TABLE, con=eng, if_exists="replace", index=False)
     print(f"[DB] wrote {len(df_scores):,} rows -> {DB_NAME}.{DB_TABLE}")
 
-    if CREATE_VIEW:
-        sql = """
-        CREATE OR REPLACE VIEW vw_rfm_for_app AS
-        SELECT r.*,
-               s.churn_probability
-        FROM rfm_result_once r
-        LEFT JOIN stg_churn_score s
-          ON s.customer_id = r.customer_id;
-        """
-        with eng.begin() as conn:
-            conn.execute(text(sql))
-        print("[DB] created/updated view: vw_rfm_for_app")
+    if _flag("CREATE_VIEW", "false"):
+        try:
+            with eng.begin() as conn:
+                conn.execute(text("""
+                CREATE OR REPLACE VIEW vw_rfm_for_app AS
+                SELECT r.*,
+                       s.churn_probability
+                FROM rfm_result_once r
+                LEFT JOIN stg_churn_score s
+                  ON s.customer_id = r.customer_id;
+                """))
+            print("[DB] created/updated view: vw_rfm_for_app")
+        except Exception as e:
+            # rfm_result_once가 아직 없을 수도 있으니, 실패해도 전체 파이프라인을 막지 않음
+            print(f"[WARN] create view failed (maybe rfm_result_once missing yet): {e}")
 
+# --- 메인 -----------------------------------------------------
 def main():
     np.random.seed(RANDOM_STATE)
 
     # 1) CSV 자동 탐색 로드
-    df_raw = load_csv_from_data()  # 기본 경로: 3-application/assets/data/… 
+    df_raw = load_csv_from_data()  # 기본 경로: 3-application/assets/data/…
 
     # 2) 피처 엔지니어링
     df_ = engineer_features(df_raw).copy()
@@ -182,7 +219,6 @@ def main():
     cols = [c for c in RECOMMENDED_COLS if c in df_.columns]
     X = df_[cols].copy()
     y = df_["Exited"].astype(int).values
-
     print(f"[INFO] 학습에 사용할 추천 피처 {len(cols)}개: {cols}")
 
     # 4) CatBoost 범주형 처리
@@ -250,15 +286,14 @@ def main():
     print(f"[SAVE] model -> {model_path}")
 
     # 9) 전수 예측 확률 저장 (churn_scores.csv)
-    #    주의: 확률(스코어) 저장. 임계값은 별도 메타로만 참고.
     full_pool = Pool(X, y, cat_features=cat_idx)
     prob = model.predict_proba(full_pool)[:, 1]
     out = pd.DataFrame({"customer_id": df_raw["CustomerId"].values, "churn_probability": prob})
     out.to_csv(OUT_CSV, index=False)
     print(f"[SAVE] scores -> {OUT_CSV} ({len(out):,} rows)")
 
-    # 10) DB 적재(+VIEW)
-    if WRITE_DB:
+    # 10) DB 적재(+VIEW) — 런타임 토글 반영
+    if _flag("WRITE_DB", "false"):
         _write_scores_and_view(out)
 
     # 간단 프린트
