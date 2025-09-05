@@ -18,9 +18,9 @@ def render_sidebar():
     with st.sidebar:
         st.header("BCMS")
         st.page_link("main.py", label="홈", icon="🏠")
+        st.page_link("pages/page01_visualization.py", label="ML시각화", icon="📊")
         st.page_link("pages/user_list.py", label="고객 이탈율", icon="📉")
         st.page_link("pages/customer_rfm.py", label="고객 그룹(RFM)", icon="👥")
         st.page_link("pages/data_tool.py", label="데이터 도구", icon="🧰")
-        st.page_link("pages/page01_visualization.py", label="시각화", icon="📊")
         st.write("---")
         st.caption("© 2025 BCMS")
