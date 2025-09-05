@@ -283,7 +283,7 @@ st.markdown("<div style='height:36px'></div>", unsafe_allow_html=True)  # ✅ �
 # ---------------------------
 # 빠른 실행 / 이동
 # ---------------------------
-st.subheader("빠른 실행 / 이동")
+st.subheader("빠른 이동")
 st.markdown('<div class="quick-anchor"></div>', unsafe_allow_html=True)
 
 q1, q2, q3 = st.columns(3)

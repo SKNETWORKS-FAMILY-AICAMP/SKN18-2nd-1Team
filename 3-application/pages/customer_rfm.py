@@ -53,6 +53,7 @@ def load_rfm_joined():
     """
     1) vw_rfm_for_app 뷰가 있으면 사용
     2) 없으면 rfm_result_once + stg_churn_score 즉시 조인
+    2) 없으면 rfm_result_once + stg_churn_score 즉시 조인
     (기존 앱 로딩 방식과 동일)
     """
     with ENGINE.begin() as conn:
@@ -138,6 +139,12 @@ SEGMENT_LABELS = {
     "LOW": "💤 저활성 고객(LOW)",
 }
 def seg_label(code: str) -> str:
+    """라벨만 (아이콘 제거)"""
+    label = SEGMENT_LABELS.get(code)
+    if label:
+        return label.lstrip("👑🤝⚠️💤 ").strip()
+    return code
+def seg_label_with_icon(code: str) -> str:
     """라벨만 (아이콘 제거)"""
     label = SEGMENT_LABELS.get(code)
     if label:
