@@ -14,3 +14,5 @@ python-dotenv
 seaborn == 0.13.2
 streamlit-aggrid == 1.1.8.post1
 imbalanced-learn
+openai
+
