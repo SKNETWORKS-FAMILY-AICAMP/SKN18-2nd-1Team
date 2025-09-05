@@ -3,7 +3,7 @@
 # 목적: 고객 CSV를 DB에 적재하고 RFM 테이블(rfm_result_once) 생성
 # 입력: assets/data/Customer-Churn-Records.csv
 # 출력: MySQL 테이블
-#   - stg_bank_churn (원본 고객 데이터)
+#   - bank_customer (원본 고객 데이터)
 #   - rfm_result_once (R/F/M 점수 + 세그먼트)
 #   - stg_churn_score (빈껍데기, 이후 full_scoring.py가 채움)
 # ------------------------------------------------------------
@@ -35,11 +35,11 @@ def connect(db=None):
 # =========================
 # 테이블 DDL
 # =========================
-DDL_STG = """
-DROP TABLE IF EXISTS stg_bank_churn;
-CREATE TABLE stg_bank_churn (
-  RowNumber        INT,
-  CustomerId       BIGINT,
+DDL_STG ="""
+DROP TABLE IF EXISTS bank_customer;
+CREATE TABLE bank_customer (
+  RowNumber        INT NOT NULL,
+  CustomerId       BIGINT NOT NULL,
   Surname          VARCHAR(100),
   CreditScore      INT,
   Geography        VARCHAR(32),
@@ -52,9 +52,13 @@ CREATE TABLE stg_bank_churn (
   IsActiveMember   TINYINT,
   EstimatedSalary  DECIMAL(18,2),
   Exited           TINYINT,
+  Complain         TINYINT,
   _loaded_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  INDEX ix_stg_customer (CustomerId),
-  INDEX ix_stg_exited (Exited)
+  PRIMARY KEY (CustomerId),
+  UNIQUE KEY uk_rownum (RowNumber),
+  KEY ix_geo (Geography),
+  KEY ix_exited (Exited),
+  KEY ix_surname (Surname)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 """
 
@@ -93,11 +97,11 @@ def load_stg_from_csv(cur, csv_path):
         reader = csv.DictReader(f)
         batch = []
         insert_sql = """
-        INSERT INTO stg_bank_churn
+        INSERT INTO bank_customer
         (RowNumber, CustomerId, Surname, CreditScore, Geography, Gender, Age, Tenure,
-         Balance, NumOfProducts, HasCrCard, IsActiveMember, EstimatedSalary, Exited)
+         Balance, NumOfProducts, HasCrCard, IsActiveMember, EstimatedSalary, Exited, Complain)
         VALUES
-        (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """
         for r in reader:
             vals = [
@@ -105,7 +109,7 @@ def load_stg_from_csv(cur, csv_path):
                 r.get("CreditScore"), r.get("Geography"), r.get("Gender"),
                 r.get("Age"), r.get("Tenure"), r.get("Balance"),
                 r.get("NumOfProducts"), r.get("HasCrCard"), r.get("IsActiveMember"),
-                r.get("EstimatedSalary"), r.get("Exited"),
+                r.get("EstimatedSalary"), r.get("Exited"), r.get("Complain")
             ]
             batch.append(vals)
             if len(batch) >= 1000:
@@ -142,7 +146,7 @@ SELECT
     WHEN Balance > 50000 THEN 'AT_RISK'
     ELSE 'LOW'
   END AS segment_code
-FROM stg_bank_churn;
+FROM bank_customer;
 """
 
 # =========================
@@ -167,7 +171,7 @@ def main():
             cur.execute(DDL_RFM)
             cur.execute(DDL_SCORE)
 
-            print(">> Load stg_bank_churn...")
+            print(">> Load bank_customer...")
             load_stg_from_csv(cur, BANK_CSV)
 
             print(">> Build RFM...")
@@ -177,7 +181,7 @@ def main():
             cur.execute(SQL_RFM_INSERT)
 
         print("✅ Done. Tables created:")
-        print(" - stg_bank_churn")
+        print(" - bank_customer")
         print(" - rfm_result_once")
         print(" - stg_churn_score (empty, to be filled by full_scoring.py)")
     finally:
