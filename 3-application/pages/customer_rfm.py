@@ -138,12 +138,6 @@ SEGMENT_LABELS = {
     "AT_RISK": "⚠️ 위험 고객(RISK)",
     "LOW": "💤 저활성 고객(LOW)",
 }
-def seg_label(code: str) -> str:
-    """라벨만 (아이콘 제거)"""
-    label = SEGMENT_LABELS.get(code)
-    if label:
-        return label.lstrip("👑🤝⚠️💤 ").strip()
-    return code
 def seg_label_with_icon(code: str) -> str:
     """라벨만 (아이콘 제거)"""
     label = SEGMENT_LABELS.get(code)
