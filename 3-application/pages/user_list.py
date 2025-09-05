@@ -1,9 +1,14 @@
 # 3-application/pages/02_user_list.py
+# Read at DB version
 import streamlit as st
 import pandas as pd
 from pathlib import Path
 from pages.app_bootstrap import hide_builtin_nav, render_sidebar # 필수 
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode # 리스트 클릭 상호작용 가능하게 해주는 lib
+from utils.process.read_db import read_df #DB에서 df 읽어오는 함수
+from st_aggrid import AgGrid, GridOptionsBuilder # 리스트 클릭 상호작용 가능하게 해주는 lib
+from dotenv import load_dotenv
+
+load_dotenv()  # .env 로드
 
 # 공통
 hide_builtin_nav()
@@ -13,51 +18,48 @@ st.set_page_config(page_title="고객 이탈률", page_icon="📊", layout="wide
 
 st.title("📊 고객 이탈률")
 
-# 경로
-APP_ROOT   = Path(__file__).resolve().parents[1]   # .../3-application
-RESULTS_DIR = APP_ROOT / "assets" / "data"
-MODELS_DIR  = APP_ROOT / "models"
-
-RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-MODELS_DIR.mkdir(parents=True, exist_ok=True)
-
 # ---------- 유틸 ----------
-@st.cache_data(show_spinner=False)
-def load_csv(path: Path) -> pd.DataFrame:
-    try:
-        return pd.read_csv(path)
-    except UnicodeDecodeError:
-        return pd.read_csv(path, encoding="utf-8-sig")
+@st.cache_data(ttl=60) #로드 되는데 60초 캐시
+def load_from_db() -> pd.DataFrame: #db에 올라간 bank_customer, stg_churn_score table 조합
+    sql = """
+    SELECT
+      b.CustomerId, b.Surname, b.CreditScore, b.Geography, b.Gender,
+      b.Age, b.Tenure, b.Balance, b.NumOfProducts, b.HasCrCard, b.IsActiveMember,
+      b.EstimatedSalary, b.Exited,
+      s.churn_probability AS predicted_proba
+    FROM bank_customer b
+    LEFT JOIN stg_churn_score s
+      ON s.customer_id = b.CustomerId
+    """
+    df = read_df(sql)
+    #컬럼명 수정
+    df["predicted_exited"] = (df["predicted_proba"] >= 0.5).astype(int)
+    return df
+
+df = load_from_db()
 
 def detect_score_cols(df: pd.DataFrame) -> tuple[str, str]:
     """
-    결과 CSV에서 확률/레이블 컬럼 자동 탐지
-    - OOF: predicted_proba_oof / predicted_exited_oof
-    - holdout/insample: predicted_proba / predicted_exited
+    결과 df에서 확률/레이블 컬럼 자동 탐지
     """
     proba_candidates = ["predicted_proba_oof", "predicted_proba"]
     label_candidates = ["predicted_exited_oof", "predicted_exited"]
     proba_col = next((c for c in proba_candidates if c in df.columns), None)
     label_col = next((c for c in label_candidates if c in df.columns), None)
     if not proba_col or not label_col:
-        raise ValueError("예측 컬럼을 찾을 수 없습니다. (predicted_proba[_oof], predicted_exited[_oof])")
+        raise ValueError("예측 컬럼을 찾을 수 없습니다")
     return proba_col, label_col
 
-# ---------- 파일 선택 ----------
-result_files = sorted(RESULTS_DIR.glob("result_*.csv"), key=lambda p: p.stat().st_mtime, reverse=True)
-if not result_files:
-    st.info("아직 결과 CSV가 없습니다. 먼저 파이프라인을 실행해 결과를 생성해 주세요.")
-    st.stop()
+proba_col, label_col = detect_score_cols(df)
 
 left, right = st.columns([2, 1])
 with left:
-    file_labels = [f"{p.name}  —  {p.stat().st_size/1024:.1f} KB" for p in result_files]
-    sel_idx = st.selectbox("결과 CSV 선택", options=range(len(result_files)), format_func=lambda i: file_labels[i])
-    sel_path = result_files[sel_idx]
-    st.caption(f"선택 파일: `{sel_path}`")
+    # file_labels = [f"{p.name}  —  {p.stat().st_size/1024:.1f} KB" for p in result_files]
+    # sel_idx = st.selectbox("결과 CSV 선택", options=range(len(result_files)), format_func=lambda i: file_labels[i])
+    # sel_path = result_files[sel_idx]
+    # st.caption(f"선택 파일: `{sel_path}`")
+    pass
 
-df = load_csv(sel_path)
-proba_col, label_col = detect_score_cols(df)
 
 # ---------- 필터/정렬 영역 ----------
 with right:
@@ -178,7 +180,7 @@ else:
         c1, c2, c3, c4 = st.columns(4)
         def v(col, default="N/A"):
             return detail_row[col].values[0] if col in detail_row.columns else default
-        c1.metric("예측확률 (Churn)", f"{score_val:.3f}")
+        c1.metric("예측확률 (Churn)", f"{score_val*100:.2f}%")
         c2.metric("예측라벨", "이탈" if label_val == 1 else "유지")
         c3.metric("CustomerId", str(v("CustomerId")))
         c4.metric("Surname", str(v("Surname")))
