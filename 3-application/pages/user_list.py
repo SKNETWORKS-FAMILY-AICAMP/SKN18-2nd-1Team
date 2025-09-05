@@ -7,7 +7,6 @@ from st_aggrid import AgGrid, GridOptionsBuilder  # 리스트 클릭 상호작�
 from dotenv import load_dotenv
 import pymysql
 
-#현재 DB 테이블에 complain 컬럼이 없어 complain 관련 코드들은 모두 주석처리한 상태입니다
 # ───────────────────────────────────────────────────────────────
 # LLM 추천 래퍼 (키가 없거나 에러여도 내부 폴백으로 안전 동작)
 try:
@@ -40,6 +39,7 @@ def _get_conn_tuple():
         autocommit=True,
     )
 
+
 def read_df(sql: str, params=None) -> pd.DataFrame:
     conn = _get_conn_tuple()
     try:
@@ -65,8 +65,6 @@ def load_from_db() -> pd.DataFrame:
         df["predicted_exited"] = (df["predicted_proba"] >= 0.5).astype(int)
     return df
 
-df = load_from_db()
-
 def detect_score_cols(df: pd.DataFrame) -> tuple[str, str]:
     proba_candidates = ["predicted_proba_oof", "predicted_proba"]
     label_candidates = ["predicted_exited_oof", "predicted_exited"]
@@ -77,9 +75,7 @@ def detect_score_cols(df: pd.DataFrame) -> tuple[str, str]:
     return proba_col, label_col
 
 #------ 데이터 표출 영역-------
-left, right = st.columns([2, 1])
-with left:
-    pass
+df = load_from_db()
 proba_col, label_col = detect_score_cols(df)
 
 # 필터링 --> 사이드바에 배치
@@ -101,16 +97,23 @@ with st.sidebar:
         default=[]
     )
 
-keyword = st.text_input("검색(성/ID 포함)")
+keyword = st.text_input("ID포함")
 
-base_cols = []
-for c in ["CustomerId", "Age", "Gender", "Geography", "CreditScore", "NumOfProducts"]:
-    if c in df.columns:
-        base_cols.append(c)
+base_cols = [c for c in ["CustomerId", "Complain", "Age", "Gender", "Geography", "CreditScore", "NumOfProducts"] if c in df.columns]
 list_cols = base_cols + [proba_col]
-
 list_df = df[list_cols].copy()
-list_df.columns = ["CustomerId", "나이", "성별", "지역", "신용점수", "가입상품", "이탈율"]
+
+rename_map = {
+    "CustomerId": "CustomerId",
+    "Complain": "Complain",          # 표시명 그대로 Complain (원하면 '불만' 등으로 바꾸세요)
+    "Age": "나이",
+    "Gender": "성별",
+    "Geography": "지역",
+    "CreditScore": "신용점수",
+    "NumOfProducts": "가입상품",
+    proba_col: "이탈율",
+}
+list_df.rename(columns={k: v for k, v in rename_map.items() if k in list_df.columns}, inplace=True)
 
 # 필터 적용
 list_df = list_df[(list_df["이탈율"] >= min_p) & (list_df["이탈율"] <= max_p)]
@@ -145,12 +148,9 @@ if credit_groups:
         list_df = list_df[pd.concat(credit_masks, axis=1).any(axis=1)]
 
 # Complain 필터링
-if complain:
+if complain and "Complain" in list_df.columns:
     comp_vals = [1 if c == "Yes" else 0 for c in complain]
-    if "Complain" in df.columns:
-        list_df = list_df.merge(df[["CustomerId", "Complain"]], on="CustomerId", how="left")
-        list_df = list_df[list_df["Complain"].isin(comp_vals)]
-        list_df.drop(columns=["Complain"], inplace=True, errors="ignore")
+    list_df = list_df[list_df["Complain"].isin(comp_vals)]
 
 # 국가 / 성별
 if geos:
@@ -193,6 +193,10 @@ gob.configure_column(
     "이탈율",
     type=["numericColumn"],
     valueFormatter="(value == null) ? '' : (value * 100).toFixed(2) + ' %'"
+)
+gob.configure_column(
+    "Complain",
+    valueFormatter="(value == 1) ? 'Yes' : (value == 0 ? 'No' : value)"
 )
 gob.configure_default_column(sortable=True, filter=True, resizable=True)
 gob.configure_selection(selection_mode="single", use_checkbox=False)
@@ -280,7 +284,7 @@ else:
     with left_box:
         st.markdown("**프로필**")
         prof = {}
-        for c in ["Geography", "Gender", "Age", "Tenure", "NumOfProducts", "HasCrCard", "IsActiveMember"]:
+        for c in ["Geography", "Gender", "Age", "Tenure", "NumOfProducts", "HasCrCard", "IsActiveMember","Complain"]:
             if c in df.columns:
                 prof[c] = v(c)
         # Arrow 타입 혼합 이슈 방지: 값 컬럼 문자열화
