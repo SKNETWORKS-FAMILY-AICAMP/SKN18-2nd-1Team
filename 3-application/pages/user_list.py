@@ -59,76 +59,187 @@ with left:
 df = load_csv(sel_path)
 proba_col, label_col = detect_score_cols(df)
 
-# ---------- 필터/정렬 영역 ----------
-with right:
-    st.subheader("필터")
-    # 확률 슬라이더(0~1)
+# 필터링 --> 사이드바에 배치
+with st.sidebar:
+    st.markdown("### 고객 정보 필터 ")
     min_p, max_p = st.slider("예측 확률 범위", 0.0, 1.0, (0.0, 1.0), 0.01)
-    # 정렬 기준
-    sort_desc = st.toggle("확률 내림차순 정렬", value=True)
-    # 간단 텍스트 검색(성/ID)
-    q = st.text_input("검색(성/ID 포함)", "")
+    complain = st.multiselect("Complain 여부", sorted(df["Complain"].map({0:"No",1:"Yes"}).unique()))
+    geos = st.multiselect("국가(Geography)", sorted(df["Geography"].unique()))
+    genders = st.multiselect("성별(Gender)", sorted(df["Gender"].unique()))
+    # 나이_연령대
+    age_groups = st.multiselect(
+        "연령대 선택",
+        ["10대 (10-19)", "20대 (20-29)", "30대 (30-39)",
+        "40대 (40-49)", "50대 (50-59)", "60대 이상 (60+)"],
+        default = []
+    )
 
-# ---------- 리스트(요약) 빌드 ----------
-# 존재 가능성이 높은 핵심 컬럼 추려서 요약 리스트 만들기
+    # 나이_라이프 사이클
+    # age_life_groups = st.multiselect(
+    #     "연령대 선택",
+    #     ["전체", "청소년(≤19)", "청년(20–34)", "중년(35–54)",
+    #     "장년(55–64)", "노년(65+)"],default = []
+    # )
+    credit_groups = st.multiselect(
+        "신용점수 등급",
+        ["전체", "Excellent (800-850)", "Very Good (740-799)", 
+        "Good (670-739)", "Fair (580-669)", "Poor (300-579)"],
+        default=[]
+        )
+
+
+keyword = st.text_input("검색(성/ID 포함)")
+
 base_cols = []
-for c in ["CustomerId", "Surname", "Age", "Geography", "Gender", "CreditScore"]:
+for c in ["CustomerId", "Age", "Gender", "Geography", "CreditScore", "NumOfProducts"]:
     if c in df.columns:
         base_cols.append(c)
-list_cols = base_cols + [proba_col, label_col]
+list_cols = base_cols + [proba_col]
 
 list_df = df[list_cols].copy()
-list_df.rename(columns={proba_col: "score", label_col: "label"}, inplace=True)
+list_df.columns = ["CustomerId", "나이", "성별", "지역", "신용점수", "가입상품","이탈율"]
 
 # 필터 적용
-list_df = list_df[(list_df["score"] >= min_p) & (list_df["score"] <= max_p)]
-if q:
-    q_lower = q.lower()
+list_df = list_df[(list_df["이탈율"] >= min_p) & (list_df["이탈율"] <= max_p)]
+
+# 연령대 필터
+if age_groups:
+    age_masks = []
+    for grp in age_groups:
+        if grp == "10대 (10-19)":
+            age_masks.append(list_df["나이"].between(10, 19))
+        elif grp == "20대 (20-29)":
+            age_masks.append(list_df["나이"].between(20, 29))
+        elif grp == "30대 (30-39)":
+            age_masks.append(list_df["나이"].between(30, 39))
+        elif grp == "40대 (40-49)":
+            age_masks.append(list_df["나이"].between(40, 49))
+        elif grp == "50대 (50-59)":
+            age_masks.append(list_df["나이"].between(50, 59))
+        elif grp == "60대 이상 (60+)":
+            age_masks.append(list_df["나이"] >= 60)
+
+    if age_masks:
+        list_df = list_df[pd.concat(age_masks, axis=1).any(axis=1)]
+
+# # 라이프 사이클
+# if age_life_groups:
+#     age_masks = []
+#     for grp in age_life_groups:
+#         if grp == "청소년(≤19)":
+#             age_masks.append(list_df["나이"].between(10, 19))
+#         elif grp == "청년(20–34)":
+#             age_masks.append(list_df["나이"].between(20, 34))
+#         elif grp == "중년(35–54)":
+#             age_masks.append(list_df["나이"].between(35, 54))
+#         elif grp == "장년(55–64)":
+#             age_masks.append(list_df["나이"].between(55, 64))
+#         elif grp == "노년(65+)":
+#             age_masks.append(list_df["나이"] >= 65)
+
+#     if age_masks:  # 여러 조건을 OR 로 묶음
+#         list_df = list_df[pd.concat(age_masks, axis=1).any(axis=1)]
+
+# 신용점수 필터
+ranges = {
+    "Excellent (800-850)": (800, 850),
+    "Very Good (740-799)": (740, 799),
+    "Good (670-739)"     : (670, 739),
+    "Fair (580-669)"     : (580, 669),
+    "Poor (300-579)"     : (300, 579),
+}
+
+if credit_groups:
+    credit_masks = []
+    for grp in credit_groups:
+        lo, hi = ranges[grp]
+        credit_masks.append(list_df["신용점수"].between(lo, hi))
+    if credit_masks:
+        list_df = list_df[pd.concat(credit_masks, axis=1).any(axis=1)]
+
+# Complain 필터링 ("Yes"/"No")
+if complain:
+    # "Yes" → 1, "No" → 0 변환
+    comp_vals = [1 if c == "Yes" else 0 for c in complain]
+
+    # 원본 df에서 CustomerId와 Complain 매핑 가져오기
+    if "Complain" in df.columns:
+        list_df = list_df.merge(df[["CustomerId", "Complain"]], on="CustomerId", how="left")
+        list_df = list_df[list_df["Complain"].isin(comp_vals)]
+        list_df.drop(columns=["Complain"], inplace=True, errors="ignore")
+
+# 국가 필터링
+if geos:
+    list_df = list_df[list_df["지역"].isin(geos)]
+
+# 성별 필터링
+if genders:
+    list_df = list_df[list_df["성별"].isin(genders)]
+
+
+# 검색어 필터링
+if keyword:
+    keyword_lower = keyword.lower()
     mask = pd.Series([False] * len(list_df))
     if "Surname" in list_df.columns:
-        mask = mask | list_df["Surname"].astype(str).str.lower().str.contains(q_lower, na=False)
+        mask = mask | list_df["Surname"].astype(str).str.lower().str.contains(keyword_lower, na=False)
     if "CustomerId" in list_df.columns:
-        mask = mask | list_df["CustomerId"].astype(str).str.contains(q_lower, na=False)
+        mask = mask | list_df["CustomerId"].astype(str).str.contains(keyword_lower, na=False)
     list_df = list_df[mask]
 
-# 정렬
-list_df = list_df.sort_values("score", ascending=not sort_desc)
-
 # ---------- 마스터(리스트) & 선택 ----------
-st.subheader("고객 리스트 (요약)")
-# 보여줄 행 수
-n_show = st.slider("표시 행 수", 5, 200, 30, 5)
-preview_df = list_df.head(n_show).reset_index(drop=True)
+st.subheader("고객 리스트")
 
-# 원본 매핑을 위한 숨김 인덱스 보존
-if "_orig_idx" not in preview_df.columns:
-    preview_df.insert(0, "_orig_idx", preview_df.index)
+# 정렬
+sort_desc = st.toggle("확률 내림차순 정렬", value=True)
+list_df = list_df.sort_values("이탈율", ascending=not sort_desc)
+
+# 페이지 크기 + 전체 보기
+left, right = st.columns([1, 1])
+with left:
+    page_size = st.selectbox("페이지 크기", [25, 50, 100], index=1)
+with right:
+    show_all = st.toggle("전체 보기 (주의)", value=False)
+
+# 표시용 DF (행 매핑용 숨김 인덱스 추가)
+display_df = list_df.reset_index(drop=True).copy()
+if "_orig_idx" not in display_df.columns:
+    display_df.insert(0, "_orig_idx", display_df.index)
 
 # ---- AgGrid 옵션 구성
-gob = GridOptionsBuilder.from_dataframe(preview_df)
+gob = GridOptionsBuilder.from_dataframe(display_df)
+gob.configure_column(
+    "이탈율",
+    type=["numericColumn"],
+    valueFormatter="(value == null) ? '' : (value * 100).toFixed(2) + ' %'"
+)
 gob.configure_default_column(sortable=True, filter=True, resizable=True)
 gob.configure_selection(selection_mode="single", use_checkbox=False)
-gob.configure_pagination(paginationAutoPageSize=True)
-
-# score 포맷
-if "score" in preview_df.columns:
-    gob.configure_column("score", type=["numericColumn"], valueFormatter="value.toFixed(3)")
-
-# (선택) 숨김 컬럼
+# 페이지네이션: 전체보기면 끄고, 아니면 page_size 적용
+if show_all:
+    gob.configure_grid_options(pagination=False)
+    gob.configure_pagination(enabled=False)
+else:
+    gob.configure_pagination(paginationAutoPageSize=False, paginationPageSize=page_size)
+# 숨김 컬럼
 gob.configure_column("_orig_idx", hide=True)
 
 grid_options = gob.build()
 
 # ---- AgGrid 렌더(행 클릭 이벤트 수신)
 grid_resp = AgGrid(
-    preview_df,
+    display_df,
     gridOptions=grid_options,
-    height=420,
+    height=600 if show_all else 420,
     fit_columns_on_grid_load=True,
     update_on=["selectionChanged"],
     allow_unsafe_jscode=True,
     enable_enterprise_modules=False,
     key="customers_grid",
+    custom_css={                                    # ✅ 셀 포커스 테두리 제거 + 선택행 하이라이트
+        ".ag-cell-focus": {"border": "none !important", "outline": "none !important"},
+        ".ag-row-selected": {"background-color": "rgba(255, 99, 132, 0.12) !important"},
+    },
 )
 
 # 선택된 행 받기
@@ -170,25 +281,45 @@ else:
     if detail_row is None or detail_row.empty:
         st.warning("선택한 고객의 상세정보를 찾을 수 없습니다.")
     else:
+        name = detail_row["Surname"]
         # score/label 컬럼명 자동 감지 함수 사용 가정(detect_score_cols)
         proba_col, label_col = detect_score_cols(df)
-        score_val = float(detail_row[proba_col].values[0])
+        score_val = float(detail_row[proba_col].values[0]*100)
         label_val = int(detail_row[label_col].values[0])
 
-        c1, c2, c3, c4 = st.columns(4)
+        
         def v(col, default="N/A"):
             return detail_row[col].values[0] if col in detail_row.columns else default
-        c1.metric("예측확률 (Churn)", f"{score_val:.3f}")
-        c2.metric("예측라벨", "이탈" if label_val == 1 else "유지")
-        c3.metric("CustomerId", str(v("CustomerId")))
-        c4.metric("Surname", str(v("Surname")))
+        st.subheader(f"👤 고객 : {v('Surname')} ({v('CustomerId')})")
 
+        st.markdown(' ')
+        c1, c2 = st.columns(2)
+
+        # 예측 확률
+        c1.markdown(
+            f"""
+            <div style='margin-bottom:0.1rem; font-weight:600;'>예측확률 (Churn)</div>
+            <div style='font-size:2rem; font-weight:700; color:#111; margin-top:0;'>{score_val:.2f}%</div>
+            """, unsafe_allow_html=True)
+
+        # 예측 라벨
+        color = "red" if label_val == 1 else "green"
+        label_txt = "이탈" if label_val == 1 else "유지"
+        c2.markdown(
+            f"""
+            <div style='margin-bottom:0.1rem; font-weight:600;'>예측라벨</div>
+            <div style='font-size:2rem; font-weight:700; color:{color}; margin-top:0;'>{label_txt}</div>
+            """,unsafe_allow_html=True)
+
+
+        st.markdown('    ')
         left_box, right_box = st.columns(2)
         with left_box:
             st.markdown("**프로필**")
             prof = {}
             for c in ["Geography", "Gender", "Age", "Tenure", "NumOfProducts", "HasCrCard", "IsActiveMember"]:
                 if c in df.columns: prof[c] = v(c)
+            
             st.table(pd.DataFrame(prof.items(), columns=["항목", "값"]))
         with right_box:
             st.markdown("**재무/점수**")
