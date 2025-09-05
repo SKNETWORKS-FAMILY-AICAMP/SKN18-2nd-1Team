@@ -269,7 +269,7 @@ with c4:
         f"""
         <div class="kpi-card" title="전체 고객 평균 이탈 확률">
           <div><span class="kpi-icon">📈</span><span class="kpi-title">평균 Churn</span></div>
-          <div class="kpi-stat">{(avg_churn or 0):.3f}</div>
+          <div class="kpi-stat">{(avg_churn or 0) * 100:.2f}%</div>
           <div class="kpi-sub"><span>갱신</span><span>{time.strftime('%Y-%m-%d %H:%M:%S')}</span></div>
         </div>
         """,
@@ -328,57 +328,54 @@ st.markdown('</div>', unsafe_allow_html=True)   # KPI 패널 닫기
 st.markdown("<div style='height:36px'></div>", unsafe_allow_html=True)  # ✅ 추가 여백
 
 # ---------------------------
-# 위험 고객 프리뷰 + 데이터 현황
+# 위험 고객 프리뷰
 # ---------------------------
-st.subheader("🔥 위험 고객 Top 10 (Churn 내림차순)")
+st.subheader("🔥 이탈 고위험 고객 Top 20")
 
 st.markdown('<div class="card table-card">', unsafe_allow_html=True)
-st.markdown('<div class="hd">🔥 위험 고객 Top 10 (Churn 내림차순)</div>', unsafe_allow_html=True)
+# st.markdown('<div class="hd">🔥 위험 고객 Top 10 (Churn 내림차순)</div>', unsafe_allow_html=True)
+# preview_df = try_frame("""
+#     SELECT r.customer_id, r.surname, r.segment_code,
+#             COALESCE(s.churn_probability, 0) AS churn_probability,
+#             r.m_score, r.f_score, r.r_score
+#     FROM rfm_result_once r
+#     LEFT JOIN stg_churn_score s ON s.customer_id = r.customer_id
+#     ORDER BY churn_probability DESC
+#     LIMIT 10
+# """, default_cols=["customer_id","surname","segment_code","churn_probability","m_score","f_score","r_score"], limit=10)
+# st.dataframe(preview_df, use_container_width=True, height=340)
+
 preview_df = try_frame("""
     SELECT r.customer_id, r.surname, r.segment_code,
-            COALESCE(s.churn_probability, 0) AS churn_probability,
-            r.m_score, r.f_score, r.r_score
+            CONCAT(ROUND(COALESCE(s.churn_probability, 0) * 100, 2), '%') AS churn_probability
     FROM rfm_result_once r
     LEFT JOIN stg_churn_score s ON s.customer_id = r.customer_id
     ORDER BY churn_probability DESC
-    LIMIT 10
-""", default_cols=["customer_id","surname","segment_code","churn_probability","m_score","f_score","r_score"], limit=10)
-st.dataframe(preview_df, use_container_width=True, height=340)
+    LIMIT 20
+""", default_cols=["customer_id","surname","segment_code","churn_probability"], limit=20)
+
+# 2) RFM 그룹 한글 매핑
+rfm_map = {
+    "VIP": "핵심 고객(VIP)",
+    "LOYAL": "충성 고객(LOYAL)",
+    "AT_RISK": "위험 고객(RISK)",
+    "LOW": "저활성 고객(LOW)",
+}
+preview_df["segment_code"] = preview_df["segment_code"].map(rfm_map).fillna(preview_df["segment_code"])
+
+# 컬럼명 한글로 변경
+preview_df = preview_df.rename(columns={
+    "customer_id": "고객ID",
+    "surname": "이름(성)",
+    "segment_code": "RFM 그룹",
+    "churn_probability": "이탈확률",
+})
+
+# 인덱스 조정 
+preview_df.index = range(1, len(preview_df) + 1)
+
+st.dataframe(preview_df, use_container_width=True, height=500)
 st.markdown('</div>', unsafe_allow_html=True)
-
-# g1, g2 = st.columns([2,1])
-
-# with g1:
-#     st.markdown('<div class="card table-card">', unsafe_allow_html=True)
-#     st.markdown('<div class="hd">🔥 위험 고객 Top 10 (Churn 내림차순)</div>', unsafe_allow_html=True)
-#     preview_df = try_frame("""
-#         SELECT r.customer_id, r.surname, r.segment_code,
-#                COALESCE(s.churn_probability, 0) AS churn_probability,
-#                r.m_score, r.f_score, r.r_score
-#         FROM rfm_result_once r
-#         LEFT JOIN stg_churn_score s ON s.customer_id = r.customer_id
-#         ORDER BY churn_probability DESC
-#         LIMIT 10
-#     """, default_cols=["customer_id","surname","segment_code","churn_probability","m_score","f_score","r_score"], limit=10)
-#     st.dataframe(preview_df, use_container_width=True, height=340)
-#     st.markdown('</div>', unsafe_allow_html=True)
-
-# with g2:
-#     st.markdown('<div class="card">', unsafe_allow_html=True)
-#     st.markdown("**데이터 현황**", unsafe_allow_html=True)
-#     size_df = try_frame(f"""
-#         SELECT table_name,
-#                ROUND(data_length/1024/1024,1) AS data_mb,
-#                ROUND(index_length/1024/1024,1) AS index_mb,
-#                table_rows
-#         FROM information_schema.tables
-#         WHERE table_schema='{DB_NAME}'
-#           AND table_name IN ('bank_customer','rfm_result_once','stg_churn_score')
-#         ORDER BY data_length DESC;
-#     """, default_cols=["table_name","data_mb","index_mb","table_rows"], limit=50)
-#     st.dataframe(size_df, use_container_width=True, height=340)
-#     st.markdown('<div class="footnote">※ 테이블 크기는 MariaDB/MySQL 통계 기준으로 근사치일 수 있습니다.</div>', unsafe_allow_html=True)
-#     st.markdown('</div>', unsafe_allow_html=True)
 
 st.write("---")
 st.caption("© 2025 BCMS · SK Networks Family AI Camp 18기 - 2nd - 1Team")
