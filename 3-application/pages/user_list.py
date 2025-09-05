@@ -279,10 +279,16 @@ else:
     c1, c2 = st.columns(2)
     c1.markdown(
         f"""
-        <div style='margin-bottom:0.1rem; font-weight:600;'>예측확률 (Churn)</div>
-        <div style='font-size:2rem; font-weight:700; color:#111; margin-top:0;'>{score_val:.2f}%</div>
-        """, unsafe_allow_html=True
+        <style>
+        .churn-score {{ margin-bottom:0.1rem; font-weight:600; }}
+        .churn-value {{ font-size:2rem; font-weight:700; margin-top:0; color: var(--text-color); }}
+        </style>
+        <div class='churn-score'>예측확률 (Churn)</div>
+        <div class='churn-value'>{score_val:.2f}%</div>
+        """,
+        unsafe_allow_html=True
     )
+
     color = "red" if label_val == 1 else "green"
     label_txt = "이탈" if label_val == 1 else "유지"
     c2.markdown(
