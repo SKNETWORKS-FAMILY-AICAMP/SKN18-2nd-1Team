@@ -51,7 +51,7 @@ def read_df(sql: str, params=None) -> pd.DataFrame:
 def load_from_db() -> pd.DataFrame:
     sql = """
     SELECT
-      b.CustomerId, b.Surname, b.CreditScore, b.Geography, b.Gender, b.Complain
+      b.CustomerId, b.Surname, b.CreditScore, b.Geography, b.Gender, b.Complain, 
       b.Age, b.Tenure, b.Balance, b.NumOfProducts, b.HasCrCard, b.IsActiveMember,
       b.EstimatedSalary, b.Exited,
       s.churn_probability AS predicted_proba
