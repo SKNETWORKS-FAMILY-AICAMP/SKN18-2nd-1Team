@@ -2,6 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 import streamlit as st
+from streamlit import column_config as cc
 from sqlalchemy import create_engine, text
 from utils.ui.ui_tools import metric_with_tooltip, ensure_ui_css, render_segment_kpis
 from pages.app_bootstrap import hide_builtin_nav, render_sidebar  # 필수
@@ -18,12 +19,17 @@ except Exception:
     _PROD_MAP = {}
 
 # ───────────────────────────────────────────────────────────────
+
+# =========================
+# 공통 페이지 설정
+# =========================
+
 hide_builtin_nav()
 render_sidebar()
 ensure_ui_css()
-
 st.set_page_config(page_title="고객 그룹", layout="wide")
 st.title("👥 고객 그룹")
+
 
 # =========================
 # DB 연결 설정
@@ -46,7 +52,8 @@ ENGINE = create_engine(
 def load_rfm_joined():
     """
     1) vw_rfm_for_app 뷰가 있으면 사용
-    2) 없으면 rfm_result_once ⟂ stg_churn_score 즉시 조인
+    2) 없으면 rfm_result_once + stg_churn_score 즉시 조인
+    (기존 앱 로딩 방식과 동일)
     """
     with ENGINE.begin() as conn:
         has_view = conn.execute(
@@ -96,7 +103,7 @@ def seg_color_alpha(seg):
         "LOW": (107, 114, 128),
     }
     r, g, b = colors.get(seg, (107, 114, 128))
-    return f"rgba({r}, {g}, {b}, 0.4)"
+    return f"rgba({r}, {g}, {b}, 0.3)"
 
 def metric_block(container, title, df_seg):
     n = len(df_seg)
@@ -106,10 +113,11 @@ def metric_block(container, title, df_seg):
     risk_avg = df_seg["churn_probability"].mean() if n else np.nan
 
     container.markdown(
+        # <div style="font-weight:700; font-size:18px; margin-bottom:6px;">{title}</div>
         f"""
         <div style="border-radius:16px; padding:16px; background:rgba(0,0,0,0.03);">
-          <div style="font-weight:700; font-size:18px; margin-bottom:6px;">{title}</div>
-          <div style="display:flex; gap:16px; flex-wrap:wrap;">
+          
+          <div style="display:flex; gap:30px; flex-wrap:wrap;">
             <div><span style="opacity:.7;">고객수</span><br><b>{n:,}</b></div>
             <div><span style="opacity:.7;">평균 R/F/M</span><br><b>{r_avg:.1f} / {f_avg:.1f} / {m_avg:.1f}</b></div>
             <div><span style="opacity:.7;">평균 Churn</span><br><b>{fmt_pct(risk_avg)}</b></div>
@@ -122,6 +130,22 @@ def metric_block(container, title, df_seg):
 # =========================
 # 데이터/전역 KPI
 # =========================
+# 세그먼트 한글 라벨
+SEGMENT_LABELS = {
+    "VIP": "👑 핵심 고객(VIP)",
+    "LOYAL": "🤝 충성 고객(LOYAL)",
+    "AT_RISK": "⚠️ 위험 고객(RISK)",
+    "LOW": "💤 저활성 고객(LOW)",
+}
+def seg_label(code: str) -> str:
+    """라벨만 (아이콘 제거)"""
+    label = SEGMENT_LABELS.get(code)
+    if label:
+        return label.lstrip("👑🤝⚠️💤 ").strip()
+    return code
+def seg_label_with_icon(code: str) -> str:
+    return SEGMENT_LABELS.get(code, code)
+
 df = load_rfm_joined()
 if df.empty:
     st.warning("데이터가 없습니다. rfm_result_once / stg_churn_score를 확인하세요.")
@@ -169,7 +193,7 @@ def make_layout(seg, df_seg):
     st.markdown(
         f"""
         <div style="background:{color}; border-radius:12px; padding:16px; margin-bottom:12px; color:white;">
-            <div style="font-weight:800; font-size:20px;">{seg_label(seg)}</div>
+            <div style="font-weight:800; font-size:20px;">{seg_label_with_icon(seg)}</div>
         </div>
         """,
         unsafe_allow_html=True
@@ -178,7 +202,7 @@ def make_layout(seg, df_seg):
     if st.button(f"🔍 {seg_label(seg)} 사용자 보기", use_container_width=True, key=f"btn_{seg}"):
         st.session_state.selected_segment = seg
 
-# 4영역
+# 4영역 레이아웃
 c1, c2 = st.columns(2)
 c3, c4 = st.columns(2)
 with c1: make_layout("VIP", vip_df)
@@ -188,10 +212,54 @@ with c4: make_layout("LOW", low_df)
 
 st.divider()
 
-# 선택된 세그먼트 목록 + LLM 요약/플레이북
+# ==================================
+# 선택된 세그먼트 사용자 목록
+# ==================================
+st.markdown("""
+<style>
+.metric-wrap {
+  display:grid; grid-template-columns: repeat(4, 1fr);
+  gap: 0; align-items: start;
+  padding: 8px 0; margin: 8px 0 18px 0;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(var(--surface-1), var(--panel-a)), rgba(var(--surface-1), var(--panel-b)));
+  border: 1px solid rgba(var(--border-rgb), var(--card-border));
+}
+.metric {
+  padding: 14px 18px 16px 18px;
+  position: relative;
+}
+.metric + .metric::before{
+  content:""; position:absolute; top:14px; bottom:14px; left:0;
+  width:1px; background: rgba(var(--border-rgb), .12); /* 세로 디바이더 */
+}
+
+.metric .label {
+  font-size: 13px; font-weight: 600; color: rgb(var(--txt-dim));
+  display:flex; align-items:center; gap:8px;
+}
+.metric .value {
+  margin-top: 8px; font-size: 34px; font-weight: 800; letter-spacing: -.01em;
+  font-variant-numeric: tabular-nums; /* 자리수 정렬 */
+}
+.metric .sub {
+  margin-top: 6px; font-size: 12px; color: rgb(var(--txt-dim));
+}
+
+/* 작은 화면에서 2열로 자동 래핑 */
+@media (max-width: 1100px){
+  .metric-wrap { grid-template-columns: repeat(2, 1fr); }
+  .metric + .metric::before{ display:none; }
+}
+</style>
+""", unsafe_allow_html=True)
+
+
 seg = st.session_state.selected_segment
+
 if seg:
-    st.subheader(f"📄 {seg_label(seg)} 목록")
+    # 제목 (한글 라벨 사용)
+    st.subheader(f"{seg_label_with_icon(seg)} 목록")
 
     seg_df = {"VIP": vip_df, "LOYAL": loyal_df, "AT_RISK": risk_df, "LOW": low_df}[seg].copy()
 
@@ -206,8 +274,7 @@ if seg:
     # 표 데이터
     show_cols = [
         "customer_id", "surname",
-        "segment_code",
-        "r_score", "f_score", "m_score", "rfm_code",
+        "r_score", "f_score", "m_score", 
         "churn_probability", "monetary_90d", "recency_days", "frequency_90d",
     ]
     for c in show_cols:
@@ -220,31 +287,83 @@ if seg:
               .reset_index(drop=True)
     )
 
-    # 보기 모드
-    b1, b2 = st.columns([1, 1])
-    if f"view_mode_{seg}" not in st.session_state:
-        st.session_state[f"view_mode_{seg}"] = "all"
-    with b1:
+    # === (NEW) 보기 모드 버튼: 전체 / 고위험 비율 / Churn 상위 10명 ===
+    btn_all, btn_risky, btn_top = st.columns([1,1,1])
+
+    state_key = f"view_mode_{seg}"
+    if state_key not in st.session_state:
+        st.session_state[state_key] = "all"
+
+    with btn_all:
         if st.button("📃 전체 보기", use_container_width=True, key=f"{seg}_all"):
-            st.session_state[f"view_mode_{seg}"] = "all"
-    with b2:
+            st.session_state[state_key] = "all"
+
+    with btn_risky:
+        if st.button("🧯 고위험 비율 목록", use_container_width=True, key=f"{seg}_risky"):
+            st.session_state[state_key] = "risky"
+
+    with btn_top:
         if st.button("🔥 Churn 상위 10명", use_container_width=True, key=f"{seg}_top10"):
-            st.session_state[f"view_mode_{seg}"] = "top10"
-    view_mode = st.session_state[f"view_mode_{seg}"]
+            st.session_state[state_key] = "top10"
+
+    view_mode = st.session_state[state_key]
+
+    # === (NEW) 모드별 데이터 선택 ===
+    cp = pd.to_numeric(seg_df["churn_probability"], errors="coerce").fillna(0.0)
 
     if view_mode == "top10":
         view_df = (
-            seg_df.assign(_cp=seg_df["churn_probability"].fillna(0.0))
-                  .sort_values("_cp", ascending=False)
-                  .drop(columns=["_cp"])
-                  .head(10)
-                  .reset_index(drop=True)
+            seg_df.assign(_cp=cp)
+                .sort_values("_cp", ascending=False)
+                .drop(columns=["_cp"])
+                .head(10)
+                .reset_index(drop=True)
         )
-        st.caption("※ 이 세그먼트에서 예측 이탈확률이 가장 높은 10명")
+        st.markdown(
+            '<span style="color:red; font-weight:bold; font-size:14px;">※ 이 세그먼트에서 예측 이탈확률이 가장 높은 10명</span>',
+            unsafe_allow_html=True
+        )
+
+    elif view_mode == "risky":
+        # 고위험: churn_probability ≥ 0.6
+        view_df = (
+            seg_df.loc[cp >= 0.6]
+                .assign(_cp=cp[cp >= 0.6])
+                .sort_values("_cp", ascending=False)
+                .drop(columns=["_cp"])
+                .reset_index(drop=True)
+        )
+        st.markdown(
+            '<span style="color:#ea580c; font-weight:bold; font-size:14px;">※ 고위험(Churn ≥ 0.6) 고객 목록</span>',
+            unsafe_allow_html=True
+        )
+
     else:
         view_df = seg_df
 
-    st.dataframe(view_df[show_cols], width="stretch", height=520)
+    # 인덱스 조정 
+    view_df.index = range(1, len(view_df) + 1)
+    # 이탈 확률 백분위
+    view_df["churn_probability"] = view_df["churn_probability"] * 100
+
+    # 표 렌더
+    # st.dataframe(display_df, use_container_width=True, height=520)
+    st.dataframe(
+        view_df[show_cols],
+        use_container_width=True,
+        height=520,
+        column_config={
+            "customer_id": cc.Column("고객ID"),
+            "surname": cc.Column("이름(성)"),
+            "r_score": cc.NumberColumn("R 점수", format="%.1f"),
+            "f_score": cc.NumberColumn("F 점수", format="%.1f"),
+            "m_score": cc.NumberColumn("M 점수", format="%.1f"),
+            "churn_probability": cc.NumberColumn("이탈확률", format="%.2f %%"),
+            "monetary_90d": cc.NumberColumn("최근 잔액", format="€%.2f"),
+            "recency_days": cc.NumberColumn("최근 거래일", format="%d"),
+            "frequency_90d": cc.NumberColumn("최근 거래일", format="%d"),
+        }
+    )
 
     file_suffix = "top10" if view_mode == "top10" else "all"
     st.download_button(
@@ -253,7 +372,10 @@ if seg:
         file_name=f"{seg.lower()}_{file_suffix}_customers.csv",
         mime="text/csv",
     )
-
+    
+# =========================
+# LLM 요약/플레이북
+# =========================
     # ── 세그먼트 대표 추천/플레이북 (래퍼 사용: 키 없으면 폴백)
     st.markdown("---")
     st.subheader("🤖 세그먼트 대표 추천 & 플레이북")
