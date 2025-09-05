@@ -4,7 +4,10 @@ import pandas as pd
 from pathlib import Path
 from pages.app_bootstrap import hide_builtin_nav, render_sidebar  # 필수
 from st_aggrid import AgGrid, GridOptionsBuilder  # 리스트 클릭 상호작용
+from dotenv import load_dotenv
+import pymysql
 
+#현재 DB 테이블에 complain 컬럼이 없어 complain 관련 코드들은 모두 주석처리한 상태입니다
 # ───────────────────────────────────────────────────────────────
 # LLM 추천 래퍼 (키가 없거나 에러여도 내부 폴백으로 안전 동작)
 try:
@@ -23,54 +26,60 @@ st.set_page_config(page_title="고객 이탈률", page_icon="📊", layout="wide
 
 st.title("📊 고객 이탈률")
 
-# 경로
-APP_ROOT = Path(__file__).resolve().parents[1]  # .../3-application
-RESULTS_DIR = APP_ROOT / "assets" / "data"
-MODELS_DIR = APP_ROOT / "models"
-RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-MODELS_DIR.mkdir(parents=True, exist_ok=True)
+#------ 데이터 획득 영역-------
+load_dotenv()
+def _get_conn_tuple():
+    return pymysql.connect(
+        host=os.getenv("DB_HOST", "127.0.0.1"),
+        port=int(os.getenv("DB_PORT", "3306")),
+        user=os.getenv("DB_USER", "root"),
+        password=os.getenv("DB_PASS", "rootpass"),
+        database=os.getenv("DB_NAME", "sknproject2"),
+        charset="utf8mb4",
+        cursorclass=pymysql.cursors.Cursor,  # ✅ tuple cursor (중요) -> 얘가 없으면 리스트에 해당 컬럼명만 계속 뜨게 됩니다.
+        autocommit=True,
+    )
 
-# ---------- 유틸 ----------
-@st.cache_data(show_spinner=False)
-def load_csv(path: Path) -> pd.DataFrame:
+def read_df(sql: str, params=None) -> pd.DataFrame:
+    conn = _get_conn_tuple()
     try:
-        return pd.read_csv(path)
-    except UnicodeDecodeError:
-        return pd.read_csv(path, encoding="utf-8-sig")
+        return pd.read_sql(sql, conn, params=params)
+    finally:
+        conn.close()
+
+@st.cache_data(ttl=60)
+def load_from_db() -> pd.DataFrame:
+    sql = """
+    SELECT
+      b.CustomerId, b.Surname, b.CreditScore, b.Geography, b.Gender, b.Complain
+      b.Age, b.Tenure, b.Balance, b.NumOfProducts, b.HasCrCard, b.IsActiveMember,
+      b.EstimatedSalary, b.Exited,
+      s.churn_probability AS predicted_proba
+    FROM bank_customer b
+    LEFT JOIN stg_churn_score s
+      ON s.customer_id = b.CustomerId
+    """
+    df = read_df(sql)
+    # 예측 라벨 파생
+    if "predicted_proba" in df.columns:
+        df["predicted_exited"] = (df["predicted_proba"] >= 0.5).astype(int)
+    return df
+
+df = load_from_db()
 
 def detect_score_cols(df: pd.DataFrame) -> tuple[str, str]:
-    """
-    결과 CSV에서 확률/레이블 컬럼 자동 탐지
-    - OOF: predicted_proba_oof / predicted_exited_oof
-    - holdout/insample: predicted_proba / predicted_exited
-    - DB 스코어 파일: churn_probability
-    """
-    proba_candidates = ["predicted_proba_oof", "predicted_proba", "churn_probability"]
+    proba_candidates = ["predicted_proba_oof", "predicted_proba"]
     label_candidates = ["predicted_exited_oof", "predicted_exited"]
     proba_col = next((c for c in proba_candidates if c in df.columns), None)
     label_col = next((c for c in label_candidates if c in df.columns), None)
-    if not proba_col:
-        raise ValueError("확률 컬럼을 찾을 수 없습니다. (predicted_proba[_oof] / churn_probability)")
-    if not label_col:
-        # label이 없는 파일도 있을 수 있으므로, 없으면 가짜 라벨(임계 0.5) 생성
-        df["_tmp_label"] = (df[proba_col] >= 0.5).astype(int)
-        label_col = "_tmp_label"
+    if not proba_col or not label_col:
+        raise ValueError("예측 컬럼을 찾을 수 없습니다")
     return proba_col, label_col
 
-# ---------- 파일 선택 ----------
-result_files = sorted(RESULTS_DIR.glob("result_*.csv"), key=lambda p: p.stat().st_mtime, reverse=True)
-if not result_files:
-    st.info("아직 결과 CSV가 없습니다. 먼저 파이프라인을 실행해 결과를 생성해 주세요.")
-    st.stop()
-
+#------ 데이터 표출 영역-------
 left, right = st.columns([2, 1])
 with left:
-    file_labels = [f"{p.name}  —  {p.stat().st_size/1024:.1f} KB" for p in result_files]
-    sel_idx = st.selectbox("결과 CSV 선택", options=range(len(result_files)), format_func=lambda i: file_labels[i])
-    sel_path = result_files[sel_idx]
-    st.caption(f"선택 파일: `{sel_path}`")
-
-df = load_csv(sel_path)
+    pass
 proba_col, label_col = detect_score_cols(df)
 
 # 필터링 --> 사이드바에 배치
