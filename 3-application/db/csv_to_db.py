@@ -157,6 +157,7 @@ CREATE TABLE bank_customer (
   IsActiveMember   TINYINT,
   EstimatedSalary  DECIMAL(18,2),
   Exited           TINYINT,
+  Complain         TINYINT,
   _loaded_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (CustomerId),
   UNIQUE KEY uk_rownum (RowNumber),
@@ -317,7 +318,7 @@ def main():
                 load_csv_via_local_infile(
                     cur, "bank_customer", bank_csv,
                     "RowNumber, CustomerId, Surname, CreditScore, Geography, Gender, Age, Tenure, "
-                    "Balance, NumOfProducts, HasCrCard, IsActiveMember, EstimatedSalary, Exited"
+                    "Balance, NumOfProducts, HasCrCard, IsActiveMember, EstimatedSalary, Exited, Complain"
                 )
                 print("   - LOCAL INFILE succeeded.")
             except Exception as e:
@@ -325,9 +326,9 @@ def main():
                 insert_sql = """
                 INSERT INTO bank_customer
                 (RowNumber, CustomerId, Surname, CreditScore, Geography, Gender, Age, Tenure,
-                Balance, NumOfProducts, HasCrCard, IsActiveMember, EstimatedSalary, Exited)
+                Balance, NumOfProducts, HasCrCard, IsActiveMember, EstimatedSalary, Exited, Complain)
                 VALUES
-                (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 ON DUPLICATE KEY UPDATE
                 RowNumber=VALUES(RowNumber),
                 Surname=VALUES(Surname),
@@ -342,11 +343,12 @@ def main():
                 IsActiveMember=VALUES(IsActiveMember),
                 EstimatedSalary=VALUES(EstimatedSalary),
                 Exited=VALUES(Exited),
+                Complain=VALUES(Complain),
                 _loaded_at=CURRENT_TIMESTAMP
                 """
                 expected_cols = ["RowNumber","CustomerId","Surname","CreditScore","Geography","Gender",
                                 "Age","Tenure","Balance","NumOfProducts","HasCrCard",
-                                "IsActiveMember","EstimatedSalary","Exited"]
+                                "IsActiveMember","EstimatedSalary","Exited","Complain"]
                 load_csv_row_by_row(cur, "bank_customer", bank_csv, insert_sql, expected_cols)
 
 
