@@ -86,45 +86,45 @@ with tab1:
         """,
     unsafe_allow_html=True)
 
-with st.container():
-    st.markdown('<div class="my_button_container">', unsafe_allow_html=True)
+    with st.container():
+        st.markdown('<div class="my_button_container">', unsafe_allow_html=True)
 
-    # 버튼 5개를 한 줄에 배치
-    st.markdown('<div class="seg-row">', unsafe_allow_html=True)
-    cols = st.columns(5)
-    for i, label in enumerate(labels):
-        if cols[i].button(label, key=f"btn_{i}", use_container_width=True):
-            st.session_state["selected_segment_eda"] = label
+        # 버튼 5개를 한 줄에 배치
+        st.markdown('<div class="seg-row">', unsafe_allow_html=True)
+        cols = st.columns(5)
+        for i, label in enumerate(labels):
+            if cols[i].button(label, key=f"btn_{i}", use_container_width=True):
+                st.session_state["selected_segment_eda"] = label
 
-    st.markdown("</div>", unsafe_allow_html=True)  # 버튼 컨테이너 닫기
+        st.markdown("</div>", unsafe_allow_html=True)  # 버튼 컨테이너 닫기
 
-    # 클릭된 버튼의 폴더 내 모든 이미지 렌더링
-    selected = st.session_state["selected_segment_eda"]
-    if selected is not None:
-        subdir = segment_to_dir[selected]
-        target_dir = IMG_DIR / subdir
+        # 클릭된 버튼의 폴더 내 모든 이미지 렌더링
+        selected = st.session_state["selected_segment_eda"]
+        if selected is not None:
+            subdir = segment_to_dir[selected]
+            target_dir = IMG_DIR / subdir
 
-        st.markdown("---")
-        st.subheader(f"{selected} ({subdir})")
+            st.markdown("---")
+            st.subheader(f"{selected} ({subdir})")
 
-        if not target_dir.exists():
-            st.warning(f"폴더가 없습니다: {target_dir}")
-        else:
-            # 이미지 파일 모으기
-            exts = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
-            image_paths = sorted(
-                [p for p in target_dir.glob("**/*") if p.suffix.lower() in exts]
-            )
-
-            if not image_paths:
-                st.info(f"표시할 이미지가 없습니다: {target_dir}")
+            if not target_dir.exists():
+                st.warning(f"폴더가 없습니다: {target_dir}")
             else:
-                # 2열 그리드로 출력
-                col_a, col_b = st.columns(2)
-                for idx, img_path in enumerate(image_paths):
-                    (col_a if idx % 2 == 0 else col_b).image(
-                        img_path, caption=img_path.stem, use_container_width=True
-                    )
+                # 이미지 파일 모으기
+                exts = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+                image_paths = sorted(
+                    [p for p in target_dir.glob("**/*") if p.suffix.lower() in exts]
+                )
+
+                if not image_paths:
+                    st.info(f"표시할 이미지가 없습니다: {target_dir}")
+                else:
+                    # 2열 그리드로 출력
+                    col_a, col_b = st.columns(2)
+                    for idx, img_path in enumerate(image_paths):
+                        (col_a if idx % 2 == 0 else col_b).image(
+                            img_path, caption=img_path.stem, use_container_width=True
+                        )
 
 # --- 탭 2: Modeling ----------------------------------------------------------
 with tab2:
