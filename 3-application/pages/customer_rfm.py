@@ -3,33 +3,18 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from streamlit import column_config as cc
+from streamlit_modal import Modal
 from sqlalchemy import create_engine, text
-from utils.ui.ui_tools import metric_with_tooltip, ensure_ui_css, render_segment_kpis
-from pages.app_bootstrap import hide_builtin_nav, render_sidebar  # 필수
-
-# ───────────────────────────────────────────────────────────────
-# LLM 추천 래퍼
-try:
-    from utils.llm.reco_templates import recommend_for_segment, SEGMENT_BUNDLES, PRODUCT_CATALOG
-    _PROD_MAP = {p["code"]: p for p in PRODUCT_CATALOG}
-except Exception:
-    recommend_for_segment = None
-    SEGMENT_BUNDLES = {}
-    PRODUCT_CATALOG = []
-    _PROD_MAP = {}
-
-# ───────────────────────────────────────────────────────────────
+from utils.ui.ui_tools import metric_with_tooltip, render_segment_kpis, show_table_data_by_view_mode, seg_label, seg_label_without_icon
+from utils.llm.llm_ui import show_RFM_LLM_strategy
+from pages.app_bootstrap import render_sidebar  # 필수
 
 # =========================
 # 공통 페이지 설정
 # =========================
-
-hide_builtin_nav()
 render_sidebar()
-ensure_ui_css()
 st.set_page_config(page_title="고객 그룹", layout="wide")
-st.title("👥 고객 그룹")
-
+st.title("👥 고객 그룹(RFM)")
 
 # =========================
 # DB 연결 설정
@@ -131,22 +116,6 @@ def metric_block(container, title, df_seg):
 # =========================
 # 데이터/전역 KPI
 # =========================
-# 세그먼트 한글 라벨
-SEGMENT_LABELS = {
-    "VIP": "👑 핵심 고객(VIP)",
-    "LOYAL": "🤝 충성 고객(LOYAL)",
-    "AT_RISK": "⚠️ 위험 고객(RISK)",
-    "LOW": "💤 저활성 고객(LOW)",
-}
-def seg_label_with_icon(code: str) -> str:
-    """라벨만 (아이콘 제거)"""
-    label = SEGMENT_LABELS.get(code)
-    if label:
-        return label.lstrip("👑🤝⚠️💤 ").strip()
-    return code
-def seg_label_with_icon(code: str) -> str:
-    return SEGMENT_LABELS.get(code, code)
-
 df = load_rfm_joined()
 if df.empty:
     st.warning("데이터가 없습니다. rfm_result_once / stg_churn_score를 확인하세요.")
@@ -177,15 +146,6 @@ loyal_df = df[df["segment_code"] == "LOYAL"].copy()
 risk_df  = df[df["segment_code"] == "AT_RISK"].copy()
 low_df   = df[df["segment_code"] == "LOW"].copy()
 
-SEGMENT_LABELS = {
-    "VIP": "핵심 고객 (VIP)",
-    "LOYAL": "충성 고객 (LOYAL)",
-    "AT_RISK": "위험 고객 (RISK)",
-    "LOW": "저활성 고객 (LOW)",
-}
-def seg_label(code: str) -> str:
-    return SEGMENT_LABELS.get(code, code)
-
 if "selected_segment" not in st.session_state:
     st.session_state.selected_segment = None
 
@@ -194,13 +154,13 @@ def make_layout(seg, df_seg):
     st.markdown(
         f"""
         <div style="background:{color}; border-radius:12px; padding:16px; margin-bottom:12px; color:white;">
-            <div style="font-weight:800; font-size:20px;">{seg_label_with_icon(seg)}</div>
+            <div style="font-weight:800; font-size:20px;">{seg_label(seg)}</div>
         </div>
         """,
         unsafe_allow_html=True
     )
     metric_block(st, f"{seg_label(seg)}", df_seg)
-    if st.button(f"🔍 {seg_label(seg)} 사용자 보기", use_container_width=True, key=f"btn_{seg}"):
+    if st.button(f"🔍 {seg_label_without_icon(seg)} 상세 보기", use_container_width=True, key=f"btn_{seg}"):
         st.session_state.selected_segment = seg
 
 # 4영역 레이아웃
@@ -216,51 +176,15 @@ st.divider()
 # ==================================
 # 선택된 세그먼트 사용자 목록
 # ==================================
-st.markdown("""
-<style>
-.metric-wrap {
-  display:grid; grid-template-columns: repeat(4, 1fr);
-  gap: 0; align-items: start;
-  padding: 8px 0; margin: 8px 0 18px 0;
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgba(var(--surface-1), var(--panel-a)), rgba(var(--surface-1), var(--panel-b)));
-  border: 1px solid rgba(var(--border-rgb), var(--card-border));
-}
-.metric {
-  padding: 14px 18px 16px 18px;
-  position: relative;
-}
-.metric + .metric::before{
-  content:""; position:absolute; top:14px; bottom:14px; left:0;
-  width:1px; background: rgba(var(--border-rgb), .12); /* 세로 디바이더 */
-}
+# 모달 생성
+# modal = Modal("🧠 AI 고객 이탈 방지 전략", key="ai_strategy_modal", max_width=1280)
+modal = Modal("🧠 AI 고객 이탈 방지 전략", key="ai_strategy_modal")
 
-.metric .label {
-  font-size: 13px; font-weight: 600; color: rgb(var(--txt-dim));
-  display:flex; align-items:center; gap:8px;
-}
-.metric .value {
-  margin-top: 8px; font-size: 34px; font-weight: 800; letter-spacing: -.01em;
-  font-variant-numeric: tabular-nums; /* 자리수 정렬 */
-}
-.metric .sub {
-  margin-top: 6px; font-size: 12px; color: rgb(var(--txt-dim));
-}
-
-/* 작은 화면에서 2열로 자동 래핑 */
-@media (max-width: 1100px){
-  .metric-wrap { grid-template-columns: repeat(2, 1fr); }
-  .metric + .metric::before{ display:none; }
-}
-</style>
-""", unsafe_allow_html=True)
-
-
+# 세그먼트 선택        
 seg = st.session_state.selected_segment
-
 if seg:
     # 제목 (한글 라벨 사용)
-    st.subheader(f"{seg_label_with_icon(seg)} 목록")
+    st.subheader(f"{seg_label(seg)} 목록")
 
     seg_df = {"VIP": vip_df, "LOYAL": loyal_df, "AT_RISK": risk_df, "LOW": low_df}[seg].copy()
 
@@ -288,8 +212,8 @@ if seg:
               .reset_index(drop=True)
     )
 
-    # === (NEW) 보기 모드 버튼: 전체 / 고위험 비율 / Churn 상위 10명 ===
-    btn_all, btn_risky, btn_top = st.columns([1,1,1])
+    #보기 모드 버튼: 전체 / 고위험 비율 / Churn 상위 10명
+    btn_all, btn_risky, btn_top, btn_ai = st.columns([1,1,1,1])
 
     state_key = f"view_mode_{seg}"
     if state_key not in st.session_state:
@@ -298,55 +222,33 @@ if seg:
     with btn_all:
         if st.button("📃 전체 보기", use_container_width=True, key=f"{seg}_all"):
             st.session_state[state_key] = "all"
-
     with btn_risky:
         if st.button("🧯 고위험 비율 목록", use_container_width=True, key=f"{seg}_risky"):
             st.session_state[state_key] = "risky"
-
     with btn_top:
         if st.button("🔥 Churn 상위 10명", use_container_width=True, key=f"{seg}_top10"):
             st.session_state[state_key] = "top10"
+    with btn_ai:
+        # 모달 열기 버튼
+        if st.button("🧠 AI 고객 이탈 방지 전략", use_container_width=True, key=f"{seg}_llm_ai"
+            , type="primary"
+            ,help=(
+                f"{seg_label(seg)} 그룹에 이탈 방지 전략을 AI가 추천합니다\n"
+                "- 상위 리스크 고객 분석\n- 주요 이탈 요인\n- 권장 액션"
+            )
+        ):
+            modal.open()
+            st.session_state[state_key] = "llm_ai"
 
+    # 모드별 데이터 선택
     view_mode = st.session_state[state_key]
-
-    # === (NEW) 모드별 데이터 선택 ===
-    cp = pd.to_numeric(seg_df["churn_probability"], errors="coerce").fillna(0.0)
-
-    if view_mode == "top10":
-        view_df = (
-            seg_df.assign(_cp=cp)
-                .sort_values("_cp", ascending=False)
-                .drop(columns=["_cp"])
-                .head(10)
-                .reset_index(drop=True)
-        )
-        st.markdown(
-            '<span style="color:red; font-weight:bold; font-size:14px;">※ 이 세그먼트에서 예측 이탈확률이 가장 높은 10명</span>',
-            unsafe_allow_html=True
-        )
-
-    elif view_mode == "risky":
-        # 고위험: churn_probability ≥ 0.6
-        view_df = (
-            seg_df.loc[cp >= 0.6]
-                .assign(_cp=cp[cp >= 0.6])
-                .sort_values("_cp", ascending=False)
-                .drop(columns=["_cp"])
-                .reset_index(drop=True)
-        )
-        st.markdown(
-            '<span style="color:#ea580c; font-weight:bold; font-size:14px;">※ 고위험(Churn ≥ 0.6) 고객 목록</span>',
-            unsafe_allow_html=True
-        )
-
-    else:
-        view_df = seg_df
+    view_df = show_table_data_by_view_mode(view_mode, seg_df)
 
     # 인덱스 조정 
     view_df.index = range(1, len(view_df) + 1)
     # 이탈 확률 백분위
     view_df["churn_probability"] = view_df["churn_probability"] * 100
-
+    
     # 표 렌더
     # st.dataframe(display_df, use_container_width=True, height=520)
     st.dataframe(
@@ -362,10 +264,11 @@ if seg:
             "churn_probability": cc.NumberColumn("이탈확률", format="%.2f %%"),
             "monetary_90d": cc.NumberColumn("최근 잔액", format="€%.2f"),
             "recency_days": cc.NumberColumn("최근 거래일", format="%d"),
-            "frequency_90d": cc.NumberColumn("최근 거래일", format="%d"),
+            "frequency_90d": cc.NumberColumn("가입 상품", format="%d"),
         }
     )
 
+    # 다운로드
     file_suffix = "top10" if view_mode == "top10" else "all"
     st.download_button(
         "⬇️ CSV 다운로드",
@@ -373,57 +276,16 @@ if seg:
         file_name=f"{seg.lower()}_{file_suffix}_customers.csv",
         mime="text/csv",
     )
+                
+    # # LLM 요약/플레이북
+    # show_RFM_LLM_strategy(seg_df=seg_df, seg=seg)
     
-# =========================
-# LLM 요약/플레이북
-# =========================
-    # ── 세그먼트 대표 추천/플레이북 (래퍼 사용: 키 없으면 폴백)
-    st.markdown("---")
-    st.subheader("🤖 세그먼트 대표 추천 & 플레이북")
-
-    stats = {
-        "count": len(seg_df),
-        "avg_churn": round(seg_df["churn_probability"].mean() if len(seg_df) else float("nan"), 4),
-        "avg_r": round(seg_df["r_score"].mean() if len(seg_df) else float("nan"), 2),
-        "avg_f": round(seg_df["f_score"].mean() if len(seg_df) else float("nan"), 2),
-        "avg_m": round(seg_df["m_score"].mean() if len(seg_df) else float("nan"), 2),
-    }
-
-    if recommend_for_segment is not None:
-        seg_reco = recommend_for_segment(seg, stats)
-    else:
-        bundle = SEGMENT_BUNDLES.get(seg, [])
-        seg_reco = {
-            "segment": seg,
-            "summary": "LLM 모듈이 없어 정책 번들을 표시합니다.",
-            "recommended_bundle": [{"code": c, "reason": "세그먼트 표준 번들"} for c in bundle],
-            "playbook": ["표준 오퍼 발송", "A/B 테스트로 캠페인 최적화"],
-        }
-
-    st.info(seg_reco.get("summary", "요약 없음"))
-
-    bundle = seg_reco.get("recommended_bundle", [])
-    if bundle:
-        st.markdown("**추천 번들**")
-        for b in bundle:
-            code = b.get("code", "")
-            name = _PROD_MAP.get(code, {}).get("name", code)
-            reason = b.get("reason", "")
-            st.markdown(
-                f"""
-                <div style="border:1px solid #e5e7eb; border-radius:10px; padding:10px; margin-bottom:6px;">
-                  <div style="font-weight:700;">{name} <span style="opacity:.6">({code})</span></div>
-                  <div style="opacity:.85;">{reason}</div>
-                </div>
-                """, unsafe_allow_html=True
-            )
-
-    acts = seg_reco.get("playbook", [])
-    if acts:
-        st.markdown("**플레이북**")
-        st.markdown("\n".join([f"- {a}" for a in acts]))
-
-    if not os.getenv("OPENAI_API_KEY"):
-        st.caption("※ LLM 키가 없어 정책 기반 폴백으로 동작 중입니다. (.env: OPENAI_API_KEY)")
-else:
-    st.info("상단의 각 세그먼트 카드에서 **사용자 보기** 버튼을 눌러 목록을 확인하세요.")
+    # 모달 컨테이너 안에 LLM 플레이북 실행
+    if modal.is_open():
+        with modal.container():
+            # st.subheader("📝 LLM 요약/플레이북")
+            # 👉 여기서 LLM 함수 실행
+            show_RFM_LLM_strategy(seg_df=seg_df, seg=seg)
+            # 닫기 버튼
+            if st.button("닫기", key="close_modal"):
+                modal.close()

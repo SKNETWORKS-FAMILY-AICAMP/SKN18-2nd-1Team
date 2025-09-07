@@ -3,32 +3,6 @@ import streamlit as st
 import pandas as pd
 from typing import Optional
 
-def ensure_ui_css():
-    """툴팁/메트릭 전역 CSS: 매 런마다 주입 (재실행 안정성)."""
-    st.markdown("""
-    <style>
-      .bcms-metric{ display:inline-block; position:relative; margin:8px 16px; }
-      .bcms-metric .label{ font-weight:600; }
-      .bcms-metric .value{ font-size:24px; font-weight:700; }
-      .bcms-metric .delta{ font-size:12px; color:var(--green, #16a34a); }
-
-      .bcms-metric .bcms-tooltip{
-        display:none !important;
-        position:absolute; z-index:9999;
-        top:100%; left:-40%;
-        max-width:320px; width:max-content;
-        background:rgba(255,255,255,.85); color:#000;
-        border-radius:6px; padding:8px 10px;
-        box-shadow:0 4px 16px rgba(0,0,0,.2);
-        text-align:left; line-height:1.4;
-        white-space:normal; cursor: pointer;
-      }
-      .bcms-metric:hover > .bcms-tooltip{
-        display:block !important;
-      }
-    </style>
-    """, unsafe_allow_html=True)
-
 def metric_with_tooltip(label: str, value: str, delta: Optional[str] = None, tooltip: str = ""):
     delta_html = f'<div class="delta">Δ {delta}</div>' if delta else ""
     st.markdown(
@@ -42,60 +16,6 @@ def metric_with_tooltip(label: str, value: str, delta: Optional[str] = None, too
         """,
         unsafe_allow_html=True
     )
-    
-# 그룹별 지표 영역
-# def render_segment_kpis(seg_df):
-#   c1, c2, c3, c4 = st.columns(4)
-#   with c1:
-#       st.metric("고객 수", f"{len(seg_df):,}")
-#   with c2:
-#       st.metric(
-#           "평균 R/F/M",
-#           f"{seg_df['r_score'].mean():.1f} / {seg_df['f_score'].mean():.1f} / {seg_df['m_score'].mean():.1f}"
-#       )
-#   with c3:
-#       st.metric("평균 Churn", f"{(seg_df['churn_probability'].astype(float)).mean():.3f}")
-#   with c4:
-#       risky_ratio = (seg_df["churn_probability"].astype(float).fillna(0) >= 0.6).mean() * 100
-#       st.metric("고위험 비율(≥0.6)", f"{risky_ratio:.1f}%")
-
-if "_seg_metric_css" not in st.session_state:
-    st.markdown("""
-    <style>
-    .metric-wrap {
-      display:grid; grid-template-columns: repeat(4, 1fr);
-      gap: 0; align-items: start;
-      padding: 8px 0; margin: 10px 0 18px 0;
-      border-radius: 14px;
-      background: linear-gradient(180deg, rgba(var(--surface-1), var(--panel-a)), rgba(var(--surface-1), var(--panel-b)));
-      border: 1px solid rgba(var(--border-rgb), var(--card-border));
-    }
-    .metric {
-      padding: 14px 18px 16px 18px;
-      position: relative;
-    }
-    .metric + .metric::before{
-      content:""; position:absolute; top:14px; bottom:14px; left:0;
-      width:1px; background: rgba(var(--border-rgb), .12);
-    }
-    .metric .label {
-      font-size: 13px; font-weight: 600; color: rgb(var(--txt-dim));
-      display:flex; align-items:center; gap:8px;
-    }
-    .metric .value {
-      margin-top: 8px; font-size: 34px; font-weight: 800; letter-spacing: -.01em;
-      font-variant-numeric: tabular-nums;
-    }
-    .metric .sub {
-      margin-top: 6px; font-size: 12px; color: rgb(var(--txt-dim));
-    }
-    @media (max-width: 1100px){
-      .metric-wrap { grid-template-columns: repeat(2, 1fr); }
-      .metric + .metric::before{ display:none; }
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    st.session_state._seg_metric_css = True
 
 # === KPI 렌더 함수 ===
 def render_segment_kpis(seg_df):
@@ -152,3 +72,53 @@ def render_segment_kpis(seg_df):
     </div>
     """, unsafe_allow_html=True)
 
+# === 세그먼트 한글 라벨 ===
+SEGMENT_LABELS = {
+    "VIP": "👑 핵심 고객(VIP)",
+    "LOYAL": "💎 충성 고객(LOYAL)",
+    "AT_RISK": "⚠️ 위험 고객(RISK)",
+    "LOW": "💤 저활성 고객(LOW)",
+}
+def seg_label_without_icon(code: str) -> str:
+    """라벨만 (아이콘 제거)"""
+    label = SEGMENT_LABELS.get(code)
+    if label:
+        return label.lstrip("👑💎🤝⚠️💤 ").strip()
+    return code
+def seg_label(code: str) -> str:
+    return SEGMENT_LABELS.get(code, code)
+
+# 전체/고위험/Top20 모드별 데이터 선택
+def show_table_data_by_view_mode(view_mode, seg_df):
+    cp = pd.to_numeric(seg_df["churn_probability"], errors="coerce").fillna(0.0)
+
+    if view_mode == "top10":
+        view_df = (
+            seg_df.assign(_cp=cp)
+                .sort_values("_cp", ascending=False)
+                .drop(columns=["_cp"])
+                .head(10)
+                .reset_index(drop=True)
+        )
+        st.markdown(
+            '<span style="color:red; font-weight:bold; font-size:14px;">※ 이 세그먼트에서 예측 이탈확률이 가장 높은 10명</span>',
+            unsafe_allow_html=True
+        )
+    elif view_mode == "risky":
+        # 고위험: churn_probability ≥ 0.6
+        view_df = (
+            seg_df.loc[cp >= 0.6]
+                .assign(_cp=cp[cp >= 0.6])
+                .sort_values("_cp", ascending=False)
+                .drop(columns=["_cp"])
+                .reset_index(drop=True)
+        )
+        st.markdown(
+            '<span style="color:#ea580c; font-weight:bold; font-size:14px;">※ 고위험(Churn ≥ 0.6) 고객 목록</span>',
+            unsafe_allow_html=True
+        )
+      
+    else:
+        view_df = seg_df
+        
+    return view_df

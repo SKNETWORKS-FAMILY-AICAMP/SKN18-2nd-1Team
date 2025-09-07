@@ -13,14 +13,14 @@ USE_LLM = bool(os.getenv("OPENAI_API_KEY"))
 # 카탈로그(필요하면 SKU/혜택/제한조건 등 상세 확장 가능)
 PRODUCT_CATALOG = [
     {"code": "CHK_FREE",   "name": "수수료무료 체크계좌",          "tags": ["입출금", "수수료면제"]},
-    {"code": "SAV_PLUS",   "name": "세이빙 플러스(오토세이브)",    "tags": ["적립", "자동이체", "소액저축"]},
-    {"code": "SAV_HIGH",   "name": "고금리 예금(12/36개월)",       "tags": ["예금", "금리우대"]},
+    {"code": "SAV_PLUS",   "name": "자동 저축계좌(오토세이브)",    "tags": ["적립", "자동이체", "소액저축"]},
+    {"code": "SAV_HIGH",   "name": "고금리 예금 상품",             "tags": ["예금", "금리우대"]},
     {"code": "CRD_CASH",   "name": "캐시백 신용카드",              "tags": ["리워드", "생활비"]},
     {"code": "CRD_TRAVEL", "name": "여행 리워드 카드",             "tags": ["마일리지", "여행"]},
     {"code": "LOAN_DC",    "name": "부채통합 대출",                "tags": ["이자절감", "리파이낸싱"]},
     {"code": "LOAN_PL",    "name": "개인 신용대출(중금리)",        "tags": ["대출", "유동성"]},
-    {"code": "WEALTH_ETF", "name": "Wealth Starter(ETF 적립)",    "tags": ["투자", "초보"]},
-    {"code": "INS_SAFE",   "name": "안심케어(체크카드 보험 번들)", "tags": ["보장", "번들"]},
+    {"code": "WEALTH_ETF", "name": "ETF 적립 투자 제안",           "tags": ["투자", "초보"]},
+    {"code": "INS_SAFE",   "name": "체크카드 보험(안심케어)",      "tags": ["보장", "번들"]},
 ]
 _catalog_map = {p["code"]: p for p in PRODUCT_CATALOG}
 

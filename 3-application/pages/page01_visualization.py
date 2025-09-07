@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy import create_engine, text
 from pathlib import Path
-from pages.app_bootstrap import hide_builtin_nav, render_sidebar
+from pages.app_bootstrap import render_sidebar # 필수 
 from sklearn.metrics import classification_report
 import plotly.express as px
 import plotly.graph_objects as go
@@ -14,9 +14,8 @@ import plotly.graph_objects as go
 # 기본 설정
 # ─────────────────────────────────────────────────────────────
 st.set_page_config(page_title="사용자 이탈율 확인", layout="wide")
-hide_builtin_nav()
 render_sidebar()
-st.title("📊 사용자 이탈율 확인")
+st.title("📊 ML 시각화")
 
 BASE_DIR = Path(__file__).resolve().parent         # pages/
 APP_DIR  = BASE_DIR.parent                         # 3-application/
@@ -127,7 +126,7 @@ with tab1:
 # 2) Modeling 탭
 # ======================================================================
 with tab2:
-    st.header("모델링 과정")
+    st.header("이탈고객 예측 - 모델링 과정")
 
     # ------------------------------------------------------------
     # 경로/환경, 모듈
@@ -256,7 +255,7 @@ with tab2:
     df["churn_probability"] = df["churn_probability"].astype(float)
 
     # Threshold
-    st.markdown("## OO은행 이탈고객 예측")
+    # st.markdown("## OO은행 이탈고객 예측")
     thr = st.slider("이탈 분류 임계값(Threshold)", min_value=0.05, max_value=0.95, value=0.50, step=0.01)
     df["Risk"] = (df["churn_probability"] >= thr).astype(int)
 
