@@ -257,5 +257,9 @@ $RECYCLE.BIN/
 
 # ETC
 .history/
+catboost_info/
+*.pkl
+churn_scores.csv
+
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,windows,python,jupyternotebooks,venv
