@@ -3,7 +3,7 @@ import os, sys, io, time, contextlib
 from pathlib import Path
 import streamlit as st
 from db.csv_to_db import main as do_csv_to_db
-from pages.app_bootstrap import hide_builtin_nav, render_sidebar
+from pages.app_bootstrap import render_sidebar
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 if str(APP_ROOT) not in sys.path:
@@ -11,7 +11,6 @@ if str(APP_ROOT) not in sys.path:
 
 # ───────────────────────────────────────────────────────────────
 # 공통 헤더/사이드바
-hide_builtin_nav()
 render_sidebar()
 
 # ───────────────────────────────────────────────────────────────

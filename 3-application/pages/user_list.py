@@ -2,7 +2,7 @@ import os
 import streamlit as st
 import pandas as pd
 from pathlib import Path
-from pages.app_bootstrap import hide_builtin_nav, render_sidebar  # 필수
+from pages.app_bootstrap import render_sidebar  # 필수
 from st_aggrid import AgGrid, GridOptionsBuilder  # 리스트 클릭 상호작용
 from dotenv import load_dotenv
 import pymysql
@@ -19,7 +19,6 @@ except Exception:
 
 # ───────────────────────────────────────────────────────────────
 # 공통 UI
-hide_builtin_nav()
 render_sidebar()
 st.set_page_config(page_title="고객 이탈률", page_icon="📊", layout="wide")
 

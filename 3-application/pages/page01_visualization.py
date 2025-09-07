@@ -4,11 +4,9 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy import create_engine, text
 from pathlib import Path
-from pages.app_bootstrap import hide_builtin_nav, render_sidebar # 필수 
+from pages.app_bootstrap import render_sidebar # 필수 
 
 st.set_page_config(page_title="사용자 이탈율 확인", layout="wide")
-
-hide_builtin_nav()
 render_sidebar()
 
 st.title("📊 사용자 이탈율 확인")
