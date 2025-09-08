@@ -326,6 +326,10 @@ if age_groups:
     if age_masks:
         list_df = list_df[pd.concat(age_masks, axis=1).any(axis=1)]
 
+# 지역 필터
+if "지역" in list_df.columns and geos:
+    list_df = list_df[list_df["지역"].isin(geos)]        
+
 # 신용점수 필터
 ranges = {
     "Excellent (800-850)": (800, 850),
