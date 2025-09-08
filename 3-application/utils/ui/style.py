@@ -371,6 +371,57 @@ COMMON_CSS = """
         max-width: none !important;
     }
 
+    /* ===== AI 고객 이탈 방지 전략(개별 고객) 모달 ===== */
+    /* 사이드바 폭(필요시 조정) */
+    :root { --sb-w: 290px; }  /* 보통 270~300px, 너희 레이아웃에 맞춰 조정해도 됨 */
+
+    /* 기본: 뷰포트 기준 고정 + 중단(상단 여백) */
+    div[data-modal-container='true'][key='ai_strategy_by_user_modal']{
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 999999 !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: flex-start !important;
+    }
+
+    /* 모달 콘텐츠 기본 폭: 컨테이너 대비 78% 정도로 살짝 줄임 */
+    div[data-modal-container='true'][key='ai_strategy_by_user_modal'] > div{
+    width: min(78%, 1200px) !important;
+    max-width: 1200px !important;
+    min-width: 760px !important;
+    transition: none !important;
+    }
+
+    /* 실제 카드 래퍼 여백(상단 간격) */
+    div[data-modal-container='true'][key='ai_strategy_by_user_modal'] > div:first-child > div:first-child{
+    margin-top: 72px !important;
+    padding: 24px !important;
+    }
+
+    /* ── 사이드바가 펼쳐져 있을 때: 모달을 사이드바 오른쪽으로 오프셋 ──
+    Streamlit 사이드바는 [data-testid="stSidebar"][aria-expanded="true"] 로 상태가 잡힘 */
+    [data-testid="stSidebar"][aria-expanded="true"] ~ section
+    div[data-modal-container='true'][key='ai_strategy_by_user_modal']{
+    left: var(--sb-w) !important;
+    width: calc(100vw - var(--sb-w)) !important;
+    }
+
+    /* 사이드바 접힘(또는 모바일)에서는 전체 폭을 사용 */
+    [data-testid="stSidebar"][aria-expanded="false"] ~ section
+    div[data-modal-container='true'][key='ai_strategy_by_user_modal'],
+    @media (max-width: 1200px){
+    div[data-modal-container='true'][key='ai_strategy_by_user_modal']{
+        left: 0 !important;
+        width: 100vw !important;
+    }
+    /* 모바일에선 더 좁게 */
+    div[data-modal-container='true'][key='ai_strategy_by_user_modal'] > div{
+        width: min(92%, 1000px) !important;
+        min-width: 0 !important;
+    }
+    }
+
 """
 # width: 85% !important; /* 기본 너비 */
 
