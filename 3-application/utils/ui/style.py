@@ -379,7 +379,7 @@ COMMON_CSS = """
     div[data-modal-container='true'][key='ai_strategy_by_user_modal']{
     position: fixed !important;
     inset: 0 !important;
-    z-index: 9999 !important;
+    z-index: 999999 !important;
     display: flex !important;
     justify-content: center !important;
     align-items: flex-start !important;
