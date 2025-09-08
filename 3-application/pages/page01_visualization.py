@@ -38,6 +38,20 @@ st.markdown("""
   --text-soft:#aab3c2;
   --ring: rgba(63,130,239,.45);
 }
+/* 카드 공통(→ KPI 등 유지) */
+.card{
+  background:rgba(255,255,255,0.04);
+  border:1px solid rgba(255,255,255,0.12);
+  padding:14px 16px;
+  border-radius:14px;
+  height:100%;
+}
+.card.ghost{
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+  padding:0 !important;
+}
 
 /* 페이지 배경(다크) */
 main, .block-container{ background: var(--bg); }
