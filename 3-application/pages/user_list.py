@@ -501,19 +501,51 @@ else:
 
     with left_box:
         prof = {}
-        for c in ["Geography", "Gender", "Age", "Tenure", "NumOfProducts", "HasCrCard", "IsActiveMember","Complain"]:
+        for c, cname in {
+            "Geography": "지역",
+            "Gender": "성별",
+            "Age": "나이",
+            "Tenure": "가입기간",
+            "HasCrCard": "신용카드보유여부",
+            "IsActiveMember": "활동회원",
+            "Complain": "불만여부"
+        }.items():
             if c in df.columns:
-                prof[c] = v(c)
+                val = v(c)
+                if c == "Complain":
+                    val = "유" if val == 1 else "무"
+                elif c == "Gender":
+                    val = "여성" if val == "Female" else "남성" 
+                elif c == "Age":
+                    val = f"{val} 세"
+                elif c == "HasCrCard":
+                    val = "유" if val == 1 else "무"
+                elif c == "IsActiveMember":
+                    val = "비활성화" if val == 0 else "활성화"
+                prof[cname] = val
         render_detail_box("프로필", prof)
 
     with right_box:
         fin = {}
-        for c in ["CreditScore", "Balance", "EstimatedSalary"]:
+        for c, cname in {
+            "CreditScore": "신용점수",
+            "Balance": "잔액",
+            "EstimatedSalary": "추정연봉",
+            "NumOfProducts": "보유상품수"
+        }.items():
             if c in df.columns:
-                fin[c] = v(c)
-        fin["predicted_proba"] = f"{score_val:.2f}%"
-        fin["predicted_label"] = label_val
+                val = v(c)
+                if c in ["Balance", "EstimatedSalary"]:
+                    val = f"€ {val:,.2f}"
+                elif c == "CreditScore":
+                    val = f"{val} 점"
+                elif c == "NumOfProducts":
+                    val = f"{val} 개"
+                fin[cname] = val
+
+        fin["예측확률"] = f"{score_val:.2f}%"
         render_detail_box("재무/점수", fin)
+
 
     with st.expander("원본 레코드 전체 보기"):
         st.dataframe(detail_row.T, use_container_width=True)
