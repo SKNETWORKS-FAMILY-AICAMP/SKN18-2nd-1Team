@@ -209,12 +209,12 @@ Team Name : SKN18기 2ND 1조
 - Histogram
 ---
 
-<img src="3-application/assets/img/eda/histogram/1-eda-histogram1.png" width="300"/>
-<img src="3-application/assets/img/eda/histogram/1-eda-histogram2.png" width="300"/>
-<img src="3-application/assets/img/eda/histogram/1-eda-histogram3.png" width="300"/>
-<img src="3-application/assets/img/eda/histogram/1-eda-histogram4.png" width="300"/>
-<img src="3-application/assets/img/eda/histogram/1-eda-histogram5.png" width="300"/>
-<img src="3-application/assets/img/eda/histogram/1-eda-histogram6.png" width="300"/>
+<img src="3-application/assets/img/eda/histogram/1-1.png" width="300"/>
+<img src="3-application/assets/img/eda/histogram/1-2.png" width="300"/>
+<img src="3-application/assets/img/eda/histogram/1-3.png" width="300"/>
+<img src="3-application/assets/img/eda/histogram/1-4.png" width="300"/>
+<img src="3-application/assets/img/eda/histogram/1-5.png" width="300"/>
+<img src="3-application/assets/img/eda/histogram/1-6.png" width="300"/>
 
 - Box plot
 ---
