@@ -9,6 +9,7 @@ from pages.app_bootstrap import render_sidebar  # 필수
 from sklearn.metrics import classification_report
 import plotly.express as px
 import plotly.graph_objects as go
+from pages.page01_na import render_na_page   # 함수 import
 
 # ─────────────────────────────────────────────────────────────
 # 기본 설정
@@ -155,6 +156,7 @@ with tab1:
     st.write("아래 세그먼트 버튼을 눌러 확인하세요.")
 
     segment_to_dir = {
+        "결측치": "NA",
         "히스토그램": "Histogram",
         "box plot(이상치)": "Outlier",
         "shap": "Shap",
@@ -189,7 +191,7 @@ with tab1:
         #     if cols[i].button(label, key=f"btn_{i}"):
         #         st.session_state["selected_segment_eda"] = label
         # st.markdown("</div>", unsafe_allow_html=True)
-        cols = st.columns(4, gap="small")  # 4등분
+        cols = st.columns(5, gap="small")  # 5등분
         for i, (col, label) in enumerate(zip(cols, labels)):
             if col.button(label, key=f"btn_{i}", use_container_width=True):
                 st.session_state["selected_segment_eda"] = label
@@ -206,12 +208,29 @@ with tab1:
             else:
                 exts = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
                 image_paths = sorted([p for p in target_dir.glob("**/*") if p.suffix.lower() in exts])
+
                 if not image_paths:
                     st.info(f"표시할 이미지가 없습니다: {target_dir}")
                 else:
-                    col_a, col_b = st.columns(2)
-                    for idx, img_path in enumerate(image_paths):
-                        (col_a if idx % 2 == 0 else col_b).image(img_path, width="stretch")
+                    # 현재 폴더 이름 확인
+                    if target_dir.name.lower() == "na":
+                        render_na_page()
+                        # 폴더명이 "na"이면 1열
+                        # for img_path in image_paths:
+                        #     st.image(img_path, width=700)
+                    else:
+                        # 그 외에는 2열
+                        col_a, col_b = st.columns(2)
+                        for idx, img_path in enumerate(image_paths):
+                            (col_a if idx % 2 == 0 else col_b).image(img_path, use_container_width=True)
+                # exts = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+                # image_paths = sorted([p for p in target_dir.glob("**/*") if p.suffix.lower() in exts])
+                # if not image_paths:
+                #     st.info(f"표시할 이미지가 없습니다: {target_dir}")
+                # else:
+                #     col_a, col_b = st.columns(2)
+                #     for idx, img_path in enumerate(image_paths):
+                #         (col_a if idx % 2 == 0 else col_b).image(img_path, width="stretch")
 
 # ======================================================================
 # 2) Modeling 탭
