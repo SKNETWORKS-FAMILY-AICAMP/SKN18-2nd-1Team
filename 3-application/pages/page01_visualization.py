@@ -19,38 +19,112 @@ st.title("📊 ML 시각화")
 
 BASE_DIR = Path(__file__).resolve().parent         # pages/
 APP_DIR  = BASE_DIR.parent                         # 3-application/
-IMG_DIR  = APP_DIR / "assets" / "img" / "img_list"
+# IMG_DIR  = APP_DIR / "assets" / "img" / "img_list"
+IMG_DIR  = APP_DIR / "assets" / "img" / "eda"
 
 # ─────────────────────────────────────────────────────────────
 # 공통 스타일
 # ─────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-/* 카드 공통(→ KPI 등 유지) */
-.card{
-  background:rgba(255,255,255,0.04);
-  border:1px solid rgba(255,255,255,0.12);
-  padding:14px 16px;
-  border-radius:14px;
-  height:100%;
+:root{
+  --bg:#0b0f15;
+  --card:#0f1723;
+  --glass1: linear-gradient(135deg, rgba(36,64,92,.55) 0%, rgba(16,31,46,.55) 100%);
+  --glass2: linear-gradient(135deg, rgba(39,119,197,.18) 0%, rgba(27,50,74,.18) 100%);
+  --accent:#3f82ef;
+  --accent-2:#39d0ff;
+  --text-strong:#e9edf3;
+  --text-soft:#aab3c2;
+  --ring: rgba(63,130,239,.45);
 }
 
-/* 배경/테두리 감추는 고스트 카드(→ 이후 섹션에만 사용) */
-.card.ghost{
-  background:transparent !important;
-  border:none !important;
-  box-shadow:none !important;
-  padding:0 !important;
+/* 페이지 배경(다크) */
+main, .block-container{ background: var(--bg); }
+
+/* ── Hero 카드(유리/그라데/둥근) ───────────────────────── */
+.hero {
+  position: relative;
+  padding: 28px 28px 22px 28px;
+  border-radius: 22px;
+  background: var(--glass1);
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow:
+    0 10px 30px rgba(0,0,0,.35),
+    inset 0 1px 0 rgba(255,255,255,.08);
+  overflow: hidden;
+}
+.hero:before{ /* 은은한 그라데 오라 */
+  content:"";
+  position:absolute; inset:-20%;
+  background: radial-gradient(1200px 600px at -10% -10%, rgba(57,208,255,.15), transparent 55%),
+              radial-gradient(900px 500px at 110% 0%, rgba(63,130,239,.18), transparent 60%);
+  pointer-events:none;
+}
+.hero .title{
+  font-size: 40px; line-height: 1.1;
+  font-weight: 900; letter-spacing: -0.5px;
+  color: var(--text-strong);
+  text-shadow: 0 2px 16px rgba(0,0,0,.35);
+  margin: 2px 0 14px;
+}
+.hero .subtitle{
+  font-size: 18px; color: var(--text-soft); margin-left: 8px;
 }
 
-.section-title{font-size:20px;font-weight:800;margin:4px 0 10px;}
-.metric-title{font-size:13px;opacity:.8;margin-bottom:6px;}
-.metric-value{font-size:30px;font-weight:900;letter-spacing:-0.5px;}
-.small{font-size:12px;opacity:.7}
-.grid-gap{margin-top:8px;}
-hr.hr{border:0;height:1px;background:rgba(255,255,255,0.15);margin:8px 0 14px;}
-.placeholder{display:flex;align-items:center;gap:10px;opacity:.85}
-.placeholder .em{font-size:18px}
+/* 라벨 배지(반투명 pill) */
+.badges{ display:flex; gap:12px; margin-top:10px; flex-wrap:wrap; }
+.badge{
+  display:inline-flex; align-items:center; gap:8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--glass2);
+  border: 1px solid rgba(255,255,255,.12);
+  color: var(--text-strong);
+  font-weight: 700; letter-spacing:.2px;
+  box-shadow: 0 6px 16px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+/* 섹션 제목 라인 */
+.section-title{
+  font-size: 20px; font-weight: 800; color: var(--text-strong);
+  margin: 18px 0 12px;
+  border-left: 4px solid var(--accent);
+  padding-left: 10px;
+}
+
+/* 이미지 카드(살짝 유리 느낌) */
+.img-card{
+  background: linear-gradient(180deg, rgba(20,33,49,.55), rgba(12,20,32,.55));
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 14px; padding: 10px; margin-bottom: 14px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.3);
+}
+
+/* 세그먼트 버튼(시스템 느낌, 선택 상태 지원) */
+div.stButton > button {
+  height: 72px; width: 100%;
+  font-size: 17px; font-weight: 800;
+  color: var(--text-strong);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #1a2333, #121926);
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow: 0 8px 22px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
+  transition: transform .05s ease, box-shadow .2s ease, border-color .2s ease;
+}
+div.stButton > button:hover{
+  border-color: var(--ring);
+  box-shadow: 0 12px 28px rgba(0,0,0,.45), 0 0 0 3px var(--ring);
+}
+div.stButton > button:active{ transform: translateY(1px) scale(.997); }
+
+/* 선택된 버튼 하이라이트 (컨테이너에 .selected 붙여서 사용) */
+.stb-selected > button{
+  background: linear-gradient(180deg, rgba(63,130,239,.95), rgba(35,82,201,.95)) !important;
+  color:#fff !important;
+  border: 1px solid rgba(63,130,239,.9) !important;
+  box-shadow: 0 16px 40px rgba(63,130,239,.35), inset 0 1px 0 rgba(255,255,255,.18) !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -71,7 +145,7 @@ with tab1:
         "box plot(이상치)": "Outlier",
         "shap": "Shap",
         "혼동행렬": "Confusion_matrix",
-        "그래프": "Graph",
+        # "그래프": "Graph",
     }
     labels = list(segment_to_dir.keys())
 
@@ -94,20 +168,23 @@ with tab1:
     """, unsafe_allow_html=True)
 
     with st.container():
-        st.markdown('<div class="my_button_container">', unsafe_allow_html=True)
-        st.markdown('<div class="seg-row">', unsafe_allow_html=True)
-        cols = st.columns(5)
-        for i, label in enumerate(labels):
-            if cols[i].button(label, key=f"btn_{i}"):
+        # st.markdown('<div class="my_button_container">', unsafe_allow_html=True)
+        # st.markdown('<div class="seg-row">', unsafe_allow_html=True)
+        # cols = st.columns(5)
+        # for i, label in enumerate(labels):
+        #     if cols[i].button(label, key=f"btn_{i}"):
+        #         st.session_state["selected_segment_eda"] = label
+        # st.markdown("</div>", unsafe_allow_html=True)
+        cols = st.columns(4, gap="small")  # 4등분
+        for i, (col, label) in enumerate(zip(cols, labels)):
+            if col.button(label, key=f"btn_{i}", use_container_width=True):
                 st.session_state["selected_segment_eda"] = label
-        st.markdown("</div>", unsafe_allow_html=True)
 
         selected = st.session_state["selected_segment_eda"]
         if selected is not None:
             subdir = segment_to_dir[selected]
             target_dir = IMG_DIR / subdir
 
-            st.markdown("---")
             st.subheader(f"{selected} ({subdir})")
 
             if not target_dir.exists():
@@ -120,7 +197,7 @@ with tab1:
                 else:
                     col_a, col_b = st.columns(2)
                     for idx, img_path in enumerate(image_paths):
-                        (col_a if idx % 2 == 0 else col_b).image(img_path, caption=img_path.stem, width="stretch")
+                        (col_a if idx % 2 == 0 else col_b).image(img_path, width="stretch")
 
 # ======================================================================
 # 2) Modeling 탭
