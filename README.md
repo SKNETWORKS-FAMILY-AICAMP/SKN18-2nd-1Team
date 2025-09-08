@@ -270,6 +270,14 @@ Team Name : SKN18기 2ND 1조
 
 
 ---
+
+### 5. System flow chart
+![alt text](3-application/assets/img/page_overview.png)
+
+![alt text](3-application/assets/img/total_structure.png)
+
+![alt text](3-application/assets/img/user_seq.png)
+
 # 4. ML 학습 결과서
 
 ---
@@ -376,23 +384,23 @@ RFM 분석은 고객을 **Recency(📅 최근성), Frequency(🔁 거래 빈도)
 # 6. Streamlit 화면 구현
 ### ✅ 대시보드 홈 페이지 (메인)
 
-![alt text](image-1.png)
+![alt text](3-application/assets/img/image-1.png)
 
 ### ✅ ML 시각화 
 
-![alt text](image-2.png)
+![alt text](3-application/assets/img/image-2.png)
 
 ### ✅ 고객 이탈율
-![alt text](image-3.png)
+![alt text](3-application/assets/img/image-3.png)
 
 ### ✅ 고객 그룹(RFM)
-![alt text](image-4.png)
+![alt text](3-application/assets/img/image-4.png)
 
 ### ✅ AI 고객 이탈 방지 전략 
-![alt text](image-5.png)
+![alt text](3-application/assets/img/image-5.png)
 
 ### ✅ 데이터 도구
-![alt text](image-6.png)
+![alt text](3-application/assets/img/image-6.png)
 
 ---
 # ✔️ 은행 고객 이탈의 주요 원인
