@@ -210,11 +210,11 @@ Team Name : SKN18기 2ND 1조
 ---
 
 <img src="3-application/assets/img/eda/histogram/1-1.png" width="300"/>
-<img src="3-application/assets/img/eda/histogram/1-2.png" width="300"/>
-<img src="3-application/assets/img/eda/histogram/1-3.png" width="300"/>
-<img src="3-application/assets/img/eda/histogram/1-4.png" width="300"/>
-<img src="3-application/assets/img/eda/histogram/1-5.png" width="300"/>
-<img src="3-application/assets/img/eda/histogram/1-6.png" width="300"/>
+<img src="3-application/assets/img/eda/histogram/2-1.png" width="300"/>
+<img src="3-application/assets/img/eda/histogram/3-1.png" width="300"/>
+<img src="3-application/assets/img/eda/histogram/4-1.png" width="300"/>
+<img src="3-application/assets/img/eda/histogram/5-1.png" width="300"/>
+<img src="3-application/assets/img/eda/histogram/6-1.png" width="300"/>
 
 - Box plot
 ---
