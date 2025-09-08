@@ -20,6 +20,11 @@ def _hide_builtin_nav():
 
 
 def render_sidebar():
+    st.markdown("""
+    <style>
+      .block-container { padding-top: 1.25rem !important; }
+    </style>
+    """, unsafe_allow_html=True)
     # 전체 css 로드
     apply_inline_css()
     # 기본 네비게이션 숨김
