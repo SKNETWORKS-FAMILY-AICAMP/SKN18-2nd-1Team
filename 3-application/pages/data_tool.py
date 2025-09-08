@@ -198,7 +198,8 @@ left, right = st.columns([7,5], gap="large")
 # ── 좌측: 실행/로그/가이드
 with left:
     # 인라인 로그 카드 자리 고정
-    st.markdown('<div class="card">', unsafe_allow_html=True)
+    # st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="card-wrap ghost"></div>', unsafe_allow_html=True)
     st.markdown("### 실행 로그")
     inline_log = st.empty()
     st.markdown("</div>", unsafe_allow_html=True)
@@ -226,7 +227,7 @@ with left:
 
 # ── 우측: 시스템 상태
 with right:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="card-wrap ghost"></div>', unsafe_allow_html=True)
     st.markdown("### 시스템 상태")
     s=collect_status()
     st.markdown(
