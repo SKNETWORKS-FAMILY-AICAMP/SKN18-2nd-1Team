@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy import create_engine, text
 from pathlib import Path
-from pages.app_bootstrap import render_sidebar # 필수 
+from pages.app_bootstrap import render_sidebar  # 필수
 from sklearn.metrics import classification_report
 import plotly.express as px
 import plotly.graph_objects as go
@@ -40,7 +40,7 @@ st.markdown("""
   background:transparent !important;
   border:none !important;
   box-shadow:none !important;
-  padding:0 !important;            /* 필요시 8~10px로 조절 가능 */
+  padding:0 !important;
 }
 
 .section-title{font-size:20px;font-weight:800;margin:4px 0 10px;}
@@ -158,6 +158,24 @@ with tab2:
         "ia_x_card", "geo_x_gender", "agebin_x_salbin", "cardtype_x_ia", "Germany_Flag",
     ]
 
+    # ─────────────────────────────────────────────────────────────
+    # Feature Importance 고정 모드 (계산 없이 아래 값으로만 시각화)
+    # ─────────────────────────────────────────────────────────────
+    USE_FIXED_FI = True  # ← 고정값 사용 여부 스위치
+    FIXED_FI = {
+        "NumOfProducts": 0.941710,
+        "Age": 0.559645,
+        "agebin_x_salbin": 0.417479,
+        "ia_x_card": 0.376097,
+        "Balance": 0.373388,
+        "cardtype_x_ia": 0.293891,
+        "geo_x_gender": 0.212987,
+        "Geography": 0.197032,
+        "Gender": 0.115979,
+        "IsActiveMember": 0.114176,
+        "Germany_Flag": 0.083117,
+    }
+
     # ------------------------------------------------------------
     # 헬퍼
     # ------------------------------------------------------------
@@ -235,7 +253,7 @@ with tab2:
             st.warning(f"모델 로드 실패({latest_model_path.name}): {e}")
 
     # 상태
-    s1, s2 = st.columns([2,1])
+    s1, s2 = st.columns([2, 1])
     with s1:
         st.info(f"스코어 소스: **{src or '없음'}**, 최신 모델: **{latest_model_path.name if latest_model_path else '없음'}**")
 
@@ -255,13 +273,12 @@ with tab2:
     df["churn_probability"] = df["churn_probability"].astype(float)
 
     # Threshold
-    # st.markdown("## OO은행 이탈고객 예측")
     thr = st.slider("이탈 분류 임계값(Threshold)", min_value=0.05, max_value=0.95, value=0.50, step=0.01)
     df["Risk"] = (df["churn_probability"] >= thr).astype(int)
 
-    # KPI (← 이 부분은 .card 그대로 유지해서 배경 보이게)
+    # KPI
     model_name = getattr(getattr(model, "__class__", None), "__name__", "N/A")
-    colA, colB, colC, colD = st.columns([1.6,1,1,1])
+    colA, colB, colC, colD = st.columns([1.6, 1, 1, 1])
     with colA:
         st.markdown('<div class="card"><div class="metric-title">최종 선택 모델</div>'
                     f'<div class="metric-value">{model_name}</div></div>', unsafe_allow_html=True)
@@ -272,7 +289,7 @@ with tab2:
         st.markdown('<div class="card"><div class="metric-title">이탈위험고객</div>'
                     f'<div class="metric-value">{int(df["Risk"].sum()):,}명</div></div>', unsafe_allow_html=True)
     with colD:
-        rate = (df["Risk"].mean()*100) if len(df) else 0
+        rate = (df["Risk"].mean() * 100) if len(df) else 0
         st.markdown('<div class="card"><div class="metric-title">이탈위험률</div>'
                     f'<div class="metric-value">{rate:.2f}%</div></div>', unsafe_allow_html=True)
 
@@ -284,8 +301,8 @@ with tab2:
     df_meta = None
     if load_csv_from_data and engineer_features:
         try:
-            raw = load_csv_from_data()           # Customer-Churn-Records.csv 자동 탐색
-            meta = engineer_features(raw).copy() # 학습 파이프라인 동일
+            raw = load_csv_from_data()            # Customer-Churn-Records.csv 자동 탐색
+            meta = engineer_features(raw).copy()  # 학습 파이프라인 동일
 
             # CustomerId → customer_id 로 안전히 합치기 (중복 방지)
             if "CustomerId" in raw.columns:
@@ -309,37 +326,49 @@ with tab2:
         st.markdown('<div class="section-title">모델 Feature 중요도</div>', unsafe_allow_html=True)
         st.markdown('<div class="card ghost">', unsafe_allow_html=True)
 
-        fi_ok = False
-        if model is not None and df_meta is not None:
-            try:
-                from catboost import Pool
-                feature_cols = [c for c in RECOMMENDED_COLS if c in df_meta.columns]
-                if feature_cols:
-                    X_tmp = df_meta[feature_cols].copy()
-                    cat_cols = X_tmp.select_dtypes(include=["object","category"]).columns.tolist()
-                    for c in cat_cols:
-                        X_tmp[c] = X_tmp[c].astype(str).fillna("NA")
-                    for c in X_tmp.columns.difference(cat_cols):
-                        X_tmp[c] = pd.to_numeric(X_tmp[c], errors="coerce").fillna(0)
-                    pool = Pool(X_tmp, cat_features=[X_tmp.columns.get_loc(c) for c in cat_cols])
-                    importances = model.get_feature_importance(pool)
-                    if len(importances) == len(feature_cols):
-                        fi = (pd.DataFrame({"Feature": feature_cols, "Importance": importances})
-                              .sort_values("Importance").tail(20))
-                        fig_fi = px.bar(fi, x="Importance", y="Feature", orientation="h", height=420)
-                        fig_fi.update_layout(margin=dict(l=8,r=8,t=6,b=6), showlegend=False)
-                        st.plotly_chart(fig_fi, width="stretch")
-                        fi_ok = True
-            except Exception:
-                fi_ok = False
-
-        if not fi_ok:
-            st.markdown(
-                '<div class="placeholder"><span class="em">💡</span>'
-                '<div>Feature Importance를 표시할 수 없습니다.<br>'
-                '<span class="small">모델과 특성 컬럼이 일치하지 않거나 저장 시 정보가 포함되지 않았습니다.</span></div></div>',
-                unsafe_allow_html=True
+        if USE_FIXED_FI:
+            # 고정 값으로만 표시
+            fi = (
+                pd.DataFrame({"Feature": list(FIXED_FI.keys()),
+                              "Importance": list(FIXED_FI.values())})
+                .sort_values("Importance")
             )
+            fig_fi = px.bar(fi, x="Importance", y="Feature", orientation="h", height=420)
+            fig_fi.update_layout(margin=dict(l=8, r=8, t=6, b=6), showlegend=False)
+            st.plotly_chart(fig_fi, use_container_width=True)
+        else:
+            # 기존 계산 경로(백업)
+            fi_ok = False
+            if model is not None and df_meta is not None:
+                try:
+                    from catboost import Pool
+                    feature_cols = [c for c in RECOMMENDED_COLS if c in df_meta.columns]
+                    if feature_cols:
+                        X_tmp = df_meta[feature_cols].copy()
+                        cat_cols = X_tmp.select_dtypes(include=["object", "category"]).columns.tolist()
+                        for c in cat_cols:
+                            X_tmp[c] = X_tmp[c].astype(str).fillna("NA")
+                        for c in X_tmp.columns.difference(cat_cols):
+                            X_tmp[c] = pd.to_numeric(cast := X_tmp[c], errors="coerce").fillna(0)
+                        pool = Pool(X_tmp, cat_features=[X_tmp.columns.get_loc(c) for c in cat_cols])
+                        importances = model.get_feature_importance(pool)
+                        if len(importances) == len(feature_cols):
+                            fi = (pd.DataFrame({"Feature": feature_cols, "Importance": importances})
+                                  .sort_values("Importance").tail(20))
+                            fig_fi = px.bar(fi, x="Importance", y="Feature", orientation="h", height=420)
+                            fig_fi.update_layout(margin=dict(l=8, r=8, t=6, b=6), showlegend=False)
+                            st.plotly_chart(fig_fi, use_container_width=True)
+                            fi_ok = True
+                except Exception:
+                    fi_ok = False
+
+            if not fi_ok:
+                st.markdown(
+                    '<div class="placeholder"><span class="em">💡</span>'
+                    '<div>Feature Importance를 표시할 수 없습니다.<br>'
+                    '<span class="small">모델과 특성 컬럼이 일치하지 않거나 저장 시 정보가 포함되지 않았습니다.</span></div></div>',
+                    unsafe_allow_html=True
+                )
         st.markdown('</div>', unsafe_allow_html=True)
 
     # ── 우: 이탈 위험 고객 리스트 (배경 숨김 → ghost)
@@ -349,15 +378,15 @@ with tab2:
 
         base_for_table = df_meta if df_meta is not None else df
         top = base_for_table.sort_values("churn_probability", ascending=False).head(50).copy()
-        top["이탈확률(%)"] = (top["churn_probability"]*100).round(2)
+        top["이탈확률(%)"] = (top["churn_probability"] * 100).round(2)
 
-        show_cols = ["customer_id","이탈확률(%)"] + [
-            c for c in ["Geography","Age","Gender","CreditScore","NumOfProducts","Balance","Point"]
+        show_cols = ["customer_id", "이탈확률(%)"] + [
+            c for c in ["Geography", "Age", "Gender", "CreditScore", "NumOfProducts", "Balance", "Point"]
             if c in top.columns
         ]
 
         fmt = {"이탈확률(%)": "{:.2f}"}
-        for c in ["Age","CreditScore","NumOfProducts","Balance","Point"]:
+        for c in ["Age", "CreditScore", "NumOfProducts", "Balance", "Point"]:
             if c in top.columns:
                 fmt[c] = "{:,.0f}"
 
@@ -380,12 +409,12 @@ with tab2:
     with r2c1:
         st.markdown('<div class="card ghost">', unsafe_allow_html=True)
         st.caption("성별")
-        gcol = next((c for c in df_risk.columns if c.lower() in ["gender","sex"]), None)
+        gcol = next((c for c in df_risk.columns if c.lower() in ["gender", "sex"]), None)
         if gcol and not df_risk.empty:
             g = df_risk[gcol].astype(str).value_counts().rename_axis("Gender").reset_index(name="Count")
             fig = px.pie(g, names="Gender", values="Count", height=240, hole=.45)
-            fig.update_layout(margin=dict(l=6,r=6,t=6,b=6), showlegend=True)
-            st.plotly_chart(fig, width="stretch")
+            fig.update_layout(margin=dict(l=6, r=6, t=6, b=6), showlegend=True)
+            st.plotly_chart(fig, use_container_width=True)
         else:
             st.markdown('<div class="placeholder">🙈 <span class="small">표시할 성별 컬럼이 없습니다.</span></div>',
                         unsafe_allow_html=True)
@@ -395,7 +424,7 @@ with tab2:
     with r2c2:
         st.markdown('<div class="card ghost">', unsafe_allow_html=True)
         st.caption("국가/지역")
-        geocol = next((c for c in df_risk.columns if c.lower() in ["geography","country","region"]), None)
+        geocol = next((c for c in df_risk.columns if c.lower() in ["geography", "country", "region"]), None)
         if geocol and not df_risk.empty:
             geo = df_risk[geocol].astype(str).value_counts().rename_axis("Country").reset_index(name="Count")
             latlon = {"Germany":(51.16,10.45), "France":(46.23,2.21), "Spain":(40.46,-3.75),
@@ -404,8 +433,8 @@ with tab2:
             geo["lon"] = geo["Country"].map(lambda x: latlon.get(x, (0,0))[1])
             fig = px.scatter_geo(geo, lat="lat", lon="lon", size="Count",
                                  hover_name="Country", projection="natural earth", height=240)
-            fig.update_layout(margin=dict(l=6,r=6,t=6,b=6), showlegend=False)
-            st.plotly_chart(fig, width="stretch")
+            fig.update_layout(margin=dict(l=6, r=6, t=6, b=6), showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
         else:
             st.markdown('<div class="placeholder">🗺️ <span class="small">표시할 국가/지역 컬럼이 없습니다.</span></div>',
                         unsafe_allow_html=True)
@@ -415,14 +444,14 @@ with tab2:
     with r2c3:
         st.markdown('<div class="card ghost">', unsafe_allow_html=True)
         st.caption("보유상품수")
-        pcol = next((c for c in df_risk.columns if c.lower() in ["numofproducts","products","product_count"]), None)
+        pcol = next((c for c in df_risk.columns if c.lower() in ["numofproducts", "products", "product_count"]), None)
         if pcol and not df_risk.empty:
             prod = df_risk[pcol].astype(str).value_counts().sort_index().reset_index()
-            prod.columns = ["Products","Count"]
+            prod.columns = ["Products", "Count"]
             fig = px.bar(prod, x="Products", y="Count", height=240,
                          color="Count", color_continuous_scale="Reds")
-            fig.update_layout(coloraxis_showscale=False, margin=dict(l=8,r=8,t=8,b=8))
-            st.plotly_chart(fig, width="stretch")
+            fig.update_layout(coloraxis_showscale=False, margin=dict(l=8, r=8, t=8, b=8))
+            st.plotly_chart(fig, use_container_width=True)
         else:
             st.markdown('<div class="placeholder">📦 <span class="small">표시할 보유상품수 컬럼이 없습니다.</span></div>',
                         unsafe_allow_html=True)
@@ -431,7 +460,7 @@ with tab2:
     # 2행 하단 전폭: 신용등급 (배경 숨김 → ghost)
     st.markdown('<div class="card ghost grid-gap">', unsafe_allow_html=True)
     st.caption("신용등급 분포")
-    cs = next((c for c in df_risk.columns if c.lower() in ["creditscore","credit_score"]), None)
+    cs = next((c for c in df_risk.columns if c.lower() in ["creditscore", "credit_score"]), None)
     if cs and not df_risk.empty:
         def band(x):
             try: x = float(x)
@@ -447,8 +476,8 @@ with tab2:
         cred.columns = ["Grade","Count"]
         fig = px.bar(cred, x="Grade", y="Count", height=260,
                      color="Count", color_continuous_scale="Reds")
-        fig.update_layout(coloraxis_showscale=False, margin=dict(l=10,r=10,t=10,b=10))
-        st.plotly_chart(fig, width="stretch")
+        fig.update_layout(coloraxis_showscale=False, margin=dict(l=10, r=10, t=10, b=10))
+        st.plotly_chart(fig, use_container_width=True)
     else:
         st.markdown('<div class="placeholder">💳 <span class="small">표시할 신용점수 컬럼이 없습니다.</span></div>',
                     unsafe_allow_html=True)
@@ -457,11 +486,9 @@ with tab2:
     # ------------------------------------------------------------
     # 모델 성능(정답 라벨 있을 때만) — 배경 숨김(ghost)
     # ------------------------------------------------------------
-    # ── 모델 성능 레이아웃
     st.markdown('<div class="section-title">모델 성능</div>', unsafe_allow_html=True)
     b1, b2, b3 = st.columns([1.0, 1.2, 1.3])
 
-    # ----- 성능계산 준비 (y_true, y_pred가 만들어진 뒤 정확도 계산) -----
     from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 
     # 라벨 컬럼 찾기
@@ -481,43 +508,36 @@ with tab2:
         acc = accuracy_score(y_true, y_pred)
         acc_str = f"{acc*100:.2f}%"
 
-    # ── b1: 모델 정보 표 (정확도 포함)
+    # b1: 모델 정보 표
     with b1:
         st.markdown('<div class="card ghost">', unsafe_allow_html=True)
         st.caption("모델 정보")
         info = pd.DataFrame({
             "Model":     [model_name],
             "Path":      [latest_model_path.name if latest_model_path else "N/A"],
-            "Accuracy":  [acc_str],   # ← 정확도 추가
+            "Accuracy":  [acc_str],
         })
         st.dataframe(info, height=160, width="stretch")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── b2/b3는 그대로 (분류 리포트, 혼동행렬)
+    # b2/b3: 분류 리포트, 혼동행렬
     if y_col:
-        # 분류 리포트/혼동행렬 코드 그대로 유지
         target_names = ["정상 고객(0)", "이탈 고객(1)"]
-
-        # 2) 리포트 산출
         rep = classification_report(
             y_true, y_pred,
             target_names=target_names,
             output_dict=True,
             zero_division=0
         )
-
-        # 3) 원하는 행만, 원하는 순서로 정렬 (accuracy 제거)
         order = target_names + ["macro avg", "weighted avg"]
-
         report_df = (
-            pd.DataFrame(rep).T       # dict -> DataFrame (전치)
-            .reindex(order)         # 행 순서 고정
-            .reset_index(drop=False)  # 인덱스 0,1,2,3으로 리셋 ← 여기 핵심!
+            pd.DataFrame(rep).T
+            .reindex(order)
+            .reset_index(drop=False)
             .rename(columns={"index": "Class"})
         )
 
         with b2:
-            # 4) 표시
             st.markdown('<div class="card ghost">', unsafe_allow_html=True)
             st.caption("분류 리포트")
             st.dataframe(report_df, height=240, width="stretch")
@@ -535,7 +555,7 @@ with tab2:
                 showscale=False, hoverinfo="skip"
             ))
             fig_cm.update_layout(height=240, margin=dict(l=10, r=10, t=10, b=10))
-            st.plotly_chart(fig_cm, width="stretch")
+            st.plotly_chart(fig_cm, use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
     else:
         with b2:
